@@ -91,7 +91,14 @@ namespace DocumentTranslationService.Core
         private static string GetSettingsFilename()
         {
             string filename;
-            if (OperatingSystem.IsWindows())
+            
+            // Check if we're running from CLI bin directory - if so, use local directory
+            string currentDirectory = Directory.GetCurrentDirectory();
+            if (currentDirectory.Contains("DocumentTranslation.CLI") && currentDirectory.Contains("bin"))
+            {
+                filename = Path.Combine(currentDirectory, AppSettingsFileName);
+            }
+            else if (OperatingSystem.IsWindows())
             {
                 Directory.CreateDirectory(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + Path.DirectorySeparatorChar + AppName);
                 filename = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + Path.DirectorySeparatorChar + AppName + Path.DirectorySeparatorChar + AppSettingsFileName;

@@ -1,0 +1,151 @@
+@page
+@model DocumentTranslation.Web.Pages.TranslateModel
+@{
+    ViewData["Title"] = "Document Translation";
+}
+
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="mb-0">
+                        <i class="fas fa-language"></i>
+                        Document Translation
+                    </h3>
+                </div>
+                <div class="card-body">
+                    @if (!string.IsNullOrEmpty(Model.Message))
+                    {
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            <i class="fas fa-check-circle"></i>
+                            @Model.Message
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+                    {
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            @Model.ErrorMessage
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    }
+
+                    <form method="post" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="UploadedFile" class="form-label">
+                                <i class="fas fa-file-upload"></i>
+                                Select Document to Translate
+                            </label>
+                            <input type="file" class="form-control" asp-for="UploadedFile" 
+                                   accept=".docx,.pdf,.pptx,.xlsx,.txt,.html,.htm,.md" required>
+                            <div class="form-text">
+                                Supported formats: Word (.docx), PDF, PowerPoint (.pptx), Excel (.xlsx), Text (.txt), HTML, Markdown
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="SourceLanguage" class="form-label">
+                                        <i class="fas fa-globe"></i>
+                                        Source Language (Optional)
+                                    </label>
+                                    <select class="form-select" asp-for="SourceLanguage">
+                                        <option value="">Auto-detect</option>
+                                        @foreach (var lang in Model.AvailableLanguages)
+                                        {
+                                            <option value="@lang.Code">@lang.Name</option>
+                                        }
+                                    </select>
+                                    <div class="form-text">Leave blank for automatic language detection</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="TargetLanguage" class="form-label">
+                                        <i class="fas fa-flag"></i>
+                                        Target Language *
+                                    </label>
+                                    <select class="form-select" asp-for="TargetLanguage" required>
+                                        @foreach (var lang in Model.AvailableLanguages)
+                                        {
+                                            <option value="@lang.Code" selected="@(lang.Code == Model.TargetLanguage)">
+                                                @lang.Name
+                                            </option>
+                                        }
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="fas fa-language"></i>
+                                Translate Document
+                            </button>
+                        </div>
+                    </form>
+
+                    @if (!string.IsNullOrEmpty(Model.DownloadPath))
+                    {
+                        <div class="mt-4 p-3 bg-light rounded">
+                            <h5><i class="fas fa-download"></i> Download Translated Document</h5>
+                            <p>Your translated document is ready for download.</p>
+                            <a href="@Model.DownloadPath" class="btn btn-success">
+                                <i class="fas fa-download"></i>
+                                Download Result
+                            </a>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-info-circle"></i>
+                        How it works
+                    </h5>
+                    <ol>
+                        <li>Upload your document using the form above</li>
+                        <li>Select the target language for translation</li>
+                        <li>Optionally specify the source language (or leave blank for auto-detection)</li>
+                        <li>Click "Translate Document" to start the process</li>
+                        <li>Download your translated document when ready</li>
+                    </ol>
+                    <p class="text-muted mb-0">
+                        <small>
+                            <i class="fas fa-shield-alt"></i>
+                            Your documents are processed securely and temporarily stored only during translation.
+                        </small>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Auto-dismiss alerts after 5 seconds
+        setTimeout(function() {
+            $('.alert').alert('close');
+        }, 5000);
+
+        // File validation
+        document.querySelector('input[type="file"]').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const maxSize = 50 * 1024 * 1024; // 50MB
+                if (file.size > maxSize) {
+                    alert('File size must be less than 50MB');
+                    e.target.value = '';
+                    return;
+                }
+            }
+        });
+    </script>
+}

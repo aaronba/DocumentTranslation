@@ -172,12 +172,13 @@ namespace DocumentTranslation.CLI
                     var key = configSetCmd.Option("--key <AzureKey>", "Azure key for the Translator resource. 'clear' to remove.", CommandOptionType.SingleValue);
                     var storage = configSetCmd.Option("--storage <StorageConnectionString>", "Connection string copied from the Azure storage resource. 'clear' to remove.", CommandOptionType.SingleValue);
                     var endpoint = configSetCmd.Option("--endpoint <Endpoint>", "URL of the Translator endpoint matching the \"key\".", CommandOptionType.SingleValue);
+                    var textEndpoint = configSetCmd.Option("--textendpoint <TextEndpoint>", "URL of the Text Translation API endpoint. 'clear' to remove.", CommandOptionType.SingleValue);
                     var region = configSetCmd.Option("--region <Region>", "Region where the Translator resource is located.", CommandOptionType.SingleValue);
                     var cat = configSetCmd.Option("--category", "Set the Custom Translator category to use for translations. 'clear' to remove.", CommandOptionType.SingleValue);
                     configSetCmd.Description = "Set the values of configuration parameters. Required before using Document Translation.";
                     configSetCmd.OnExecute(() =>
                     {
-                        if (!(key.HasValue() || storage.HasValue() || endpoint.HasValue() || region.HasValue() || cat.HasValue())) configSetCmd.ShowHelp();
+                        if (!(key.HasValue() || storage.HasValue() || endpoint.HasValue() || textEndpoint.HasValue() || region.HasValue() || cat.HasValue())) configSetCmd.ShowHelp();
                         DocTransAppSettings docTransAppSettings = AppSettingsSetter.Read(null);
                         if (key.HasValue())
                         {
@@ -200,6 +201,12 @@ namespace DocumentTranslation.CLI
                             if (endpoint.Value().ToLowerInvariant() == "clear") docTransAppSettings.AzureResourceName = string.Empty;
                             else docTransAppSettings.AzureResourceName = endpoint.Value();
                             Console.WriteLine($"{app.Name}: Azure resource endpoint set.");
+                        }
+                        if (textEndpoint.HasValue())
+                        {
+                            if (textEndpoint.Value().ToLowerInvariant() == "clear") docTransAppSettings.TextTransEndpoint = string.Empty;
+                            else docTransAppSettings.TextTransEndpoint = textEndpoint.Value();
+                            Console.WriteLine($"{app.Name}: Text Translation endpoint set.");
                         }
                         if (cat.HasValue())
                         {
