@@ -89,15 +89,41 @@
                         </div>
                     </form>
 
-                    @if (!string.IsNullOrEmpty(Model.DownloadPath))
+                    @if (Model.TranslatedFiles.Any())
                     {
                         <div class="mt-4 p-3 bg-light rounded">
-                            <h5><i class="fas fa-download"></i> Download Translated Document</h5>
-                            <p>Your translated document is ready for download.</p>
-                            <a href="@Model.DownloadPath" class="btn btn-success">
-                                <i class="fas fa-download"></i>
-                                Download Result
-                            </a>
+                            <h5><i class="fas fa-download"></i> Download Translated Documents</h5>
+                            
+                            @if (Model.TranslatedFiles.Count == 1)
+                            {
+                                <p>Your translated document is ready for download.</p>
+                                <a href="@Url.Page("/Translate", "Download", new { fileName = Model.TranslatedFiles.First() })" class="btn btn-success">
+                                    <i class="fas fa-download"></i>
+                                    Download @Model.TranslatedFiles.First()
+                                </a>
+                            }
+                            else
+                            {
+                                <p>Your translated documents are ready for download.</p>
+                                <div class="mb-3">
+                                    <a href="@Url.Page("/Translate", "DownloadAll")" class="btn btn-success">
+                                        <i class="fas fa-file-archive"></i>
+                                        Download All Files (ZIP)
+                                    </a>
+                                </div>
+                                
+                                <div class="list-group">
+                                    @foreach (var file in Model.TranslatedFiles)
+                                    {
+                                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                                            <span><i class="fas fa-file"></i> @file</span>
+                                            <a href="@Url.Page("/Translate", "Download", new { fileName = file })" class="btn btn-sm btn-outline-primary">
+                                                <i class="fas fa-download"></i> Download
+                                            </a>
+                                        </div>
+                                    }
+                                </div>
+                            }
                         </div>
                     }
                 </div>

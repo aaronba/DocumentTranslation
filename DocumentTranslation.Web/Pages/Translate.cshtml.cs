@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using System.Diagnostics;
 using System.Text.Json;
+using System.IO.Compression;
 
 namespace DocumentTranslation.Web.Pages
 {
@@ -28,7 +29,7 @@ namespace DocumentTranslation.Web.Pages
         public string? Message { get; set; }
         public string? ErrorMessage { get; set; }
         public bool IsTranslating { get; set; }
-        public string? DownloadPath { get; set; }
+        public List<string> TranslatedFiles { get; set; } = new();
 
         public List<LanguageOption> AvailableLanguages { get; set; } = new()
         {
@@ -65,6 +66,14 @@ namespace DocumentTranslation.Web.Pages
 
             try
             {
+                // First, test if CLI is accessible and configured
+                var configTestResult = await TestCliConfigurationAsync();
+                if (!configTestResult.Success)
+                {
+                    ErrorMessage = $"CLI Configuration Error: {configTestResult.Error}";
+                    return Page();
+                }
+
                 // Create uploads directory
                 var uploadsPath = Path.Combine(_environment.WebRootPath, "uploads");
                 if (!Directory.Exists(uploadsPath))
@@ -89,16 +98,22 @@ namespace DocumentTranslation.Web.Pages
                 }
 
                 // Run translation
-                var success = await RunTranslationAsync(filePath, outputPath, TargetLanguage, SourceLanguage);
+                var result = await RunTranslationAsync(filePath, outputPath, TargetLanguage, SourceLanguage);
                 
-                if (success)
+                if (result.Success)
                 {
                     Message = $"Translation completed successfully! File translated to {TargetLanguage}.";
-                    DownloadPath = $"/uploads/output";
+                    
+                    // Get list of translated files
+                    if (Directory.Exists(outputPath))
+                    {
+                        var files = Directory.GetFiles(outputPath);
+                        TranslatedFiles = files.Select(f => Path.GetFileName(f)).ToList();
+                    }
                 }
                 else
                 {
-                    ErrorMessage = "Translation failed. Please check your configuration and try again.";
+                    ErrorMessage = $"Translation failed: {result.Error}";
                 }
             }
             catch (Exception ex)
@@ -110,58 +125,258 @@ namespace DocumentTranslation.Web.Pages
             return Page();
         }
 
-        private async Task<bool> RunTranslationAsync(string inputFile, string outputDir, string targetLang, string sourceLang)
+        private async Task<(bool Success, string Error)> TestCliConfigurationAsync()
         {
             try
             {
-                // Path to the CLI executable
-                var cliPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "DocumentTranslation.CLI", "bin", "Debug", "net8.0", "doctr");
+                var wrapperPath = Path.Combine(Directory.GetCurrentDirectory(), "run-doctr.py");
+                
+                if (!System.IO.File.Exists(wrapperPath))
+                {
+                    return (false, $"CLI wrapper script not found at: {wrapperPath}");
+                }
+
+                var processInfo = new ProcessStartInfo
+                {
+                    FileName = "python3",
+                    Arguments = $"{wrapperPath} config test",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WorkingDirectory = Directory.GetCurrentDirectory()
+                };
+
+                using var process = Process.Start(processInfo);
+                if (process == null)
+                {
+                    return (false, "Failed to start CLI process");
+                }
+
+                var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                
+                try
+                {
+                    var output = await process.StandardOutput.ReadToEndAsync();
+                    var error = await process.StandardError.ReadToEndAsync();
+                    
+                    await process.WaitForExitAsync(timeoutCts.Token);
+
+                    if (process.ExitCode == 0)
+                    {
+                        return (true, string.Empty);
+                    }
+                    else
+                    {
+                        var errorMsg = !string.IsNullOrEmpty(error) ? error : output;
+                        return (false, $"Configuration test failed: {errorMsg}");
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    try { process.Kill(true); } catch { }
+                    return (false, "Configuration test timed out");
+                }
+            }
+            catch (Exception ex)
+            {
+                return (false, $"Error testing configuration: {ex.Message}");
+            }
+        }
+
+        private async Task<(bool Success, string Error)> RunTranslationAsync(string inputFile, string outputDir, string targetLang, string sourceLang)
+        {
+            try
+            {
+                // Use the Python wrapper script instead of calling doctr directly
+                var wrapperPath = Path.Combine(Directory.GetCurrentDirectory(), "run-doctr.py");
                 
                 // Build command arguments
-                var args = $"translate \"{inputFile}\" \"{outputDir}\" --to {targetLang}";
+                var args = $"{wrapperPath} translate \"{inputFile}\" \"{outputDir}\" --to {targetLang}";
                 if (!string.IsNullOrEmpty(sourceLang))
                 {
                     args += $" --from {sourceLang}";
                 }
 
-                _logger.LogInformation($"Running command: {cliPath} {args}");
+                _logger.LogInformation($"Running command: python3 {args}");
 
                 var processInfo = new ProcessStartInfo
                 {
-                    FileName = cliPath,
+                    FileName = "python3",
                     Arguments = args,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true,
-                    WorkingDirectory = Path.GetDirectoryName(cliPath)
+                    WorkingDirectory = Directory.GetCurrentDirectory()
                 };
 
                 using var process = Process.Start(processInfo);
                 if (process == null)
                 {
                     _logger.LogError("Failed to start translation process");
-                    return false;
+                    return (false, "Failed to start translation process");
                 }
 
-                var output = await process.StandardOutput.ReadToEndAsync();
-                var error = await process.StandardError.ReadToEndAsync();
+                // Set a timeout for the process (e.g., 10 minutes)
+                var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
                 
-                await process.WaitForExitAsync();
-
-                _logger.LogInformation($"Translation output: {output}");
-                if (!string.IsNullOrEmpty(error))
+                try
                 {
-                    _logger.LogWarning($"Translation error: {error}");
-                }
+                    var outputTask = process.StandardOutput.ReadToEndAsync();
+                    var errorTask = process.StandardError.ReadToEndAsync();
+                    
+                    // Wait for process completion with timeout
+                    await process.WaitForExitAsync(timeoutCts.Token);
+                    
+                    var output = await outputTask;
+                    var error = await errorTask;
 
-                return process.ExitCode == 0;
+                    _logger.LogInformation($"Translation output: {output}");
+                    if (!string.IsNullOrEmpty(error))
+                    {
+                        _logger.LogWarning($"Translation error: {error}");
+                    }
+                    
+                    // Check if the process completed successfully
+                    if (process.ExitCode == 0)
+                    {
+                        // Verify that output files were created
+                        if (Directory.Exists(outputDir) && Directory.GetFiles(outputDir, "*", SearchOption.AllDirectories).Length > 0)
+                        {
+                            return (true, string.Empty);
+                        }
+                        else
+                        {
+                            return (false, "Translation completed but no output files were generated");
+                        }
+                    }
+                    else
+                    {
+                        // Process failed - extract meaningful error message
+                        string errorMsg = "Translation failed";
+                        
+                        if (!string.IsNullOrEmpty(error))
+                        {
+                            errorMsg = error.Trim();
+                        }
+                        else if (!string.IsNullOrEmpty(output) && output.Contains("FAIL"))
+                        {
+                            errorMsg = output.Trim();
+                        }
+                        
+                        _logger.LogWarning($"Translation failed with exit code {process.ExitCode}: {errorMsg}");
+                        return (false, errorMsg);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogWarning("Translation process timed out");
+                    try { process.Kill(true); } catch { }
+                    return (false, "Translation process timed out");
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to run translation command");
-                return false;
+                return (false, $"Failed to run translation command: {ex.Message}");
             }
+        }
+
+        public async Task<IActionResult> OnGetDownloadAsync(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName))
+            {
+                return NotFound();
+            }
+
+            var outputPath = Path.Combine(_environment.WebRootPath, "uploads", "output");
+            var filePath = Path.Combine(outputPath, fileName);
+
+            // Security check - ensure the file is within the output directory
+            var fullPath = Path.GetFullPath(filePath);
+            var fullOutputPath = Path.GetFullPath(outputPath);
+            
+            if (!fullPath.StartsWith(fullOutputPath))
+            {
+                return NotFound();
+            }
+
+            if (!System.IO.File.Exists(filePath))
+            {
+                return NotFound();
+            }
+
+            var memory = new MemoryStream();
+            using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read))
+            {
+                await stream.CopyToAsync(memory);
+            }
+            memory.Position = 0;
+
+            var contentType = GetContentType(fileName);
+            return File(memory, contentType, fileName);
+        }
+
+        public async Task<IActionResult> OnGetDownloadAllAsync()
+        {
+            var outputPath = Path.Combine(_environment.WebRootPath, "uploads", "output");
+            
+            if (!Directory.Exists(outputPath))
+            {
+                return NotFound();
+            }
+
+            var files = Directory.GetFiles(outputPath);
+            if (files.Length == 0)
+            {
+                return NotFound();
+            }
+
+            // If there's only one file, download it directly
+            if (files.Length == 1)
+            {
+                var fileName = Path.GetFileName(files[0]);
+                return await OnGetDownloadAsync(fileName);
+            }
+
+            // If multiple files, create a zip archive
+            var zipStream = new MemoryStream();
+            using (var archive = new System.IO.Compression.ZipArchive(zipStream, System.IO.Compression.ZipArchiveMode.Create, true))
+            {
+                foreach (var file in files)
+                {
+                    var fileName = Path.GetFileName(file);
+                    var entry = archive.CreateEntry(fileName);
+                    
+                    using var entryStream = entry.Open();
+                    using var fileStream = new FileStream(file, FileMode.Open, FileAccess.Read);
+                    await fileStream.CopyToAsync(entryStream);
+                }
+            }
+
+            zipStream.Position = 0;
+            return File(zipStream, "application/zip", "translated_files.zip");
+        }
+
+        private string GetContentType(string fileName)
+        {
+            var extension = Path.GetExtension(fileName).ToLowerInvariant();
+            return extension switch
+            {
+                ".pdf" => "application/pdf",
+                ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ".doc" => "application/msword",
+                ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                ".ppt" => "application/vnd.ms-powerpoint",
+                ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ".xls" => "application/vnd.ms-excel",
+                ".txt" => "text/plain",
+                ".html" => "text/html",
+                ".htm" => "text/html",
+                ".md" => "text/markdown",
+                _ => "application/octet-stream"
+            };
         }
     }
 
