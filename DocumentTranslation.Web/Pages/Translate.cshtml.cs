@@ -1,8 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using System.Diagnostics;
-using System.Text.Json;
 using System.IO.Compression;
+using DocumentTranslationService.Core;
 
 namespace DocumentTranslation.Web.Pages
 {
@@ -10,11 +9,19 @@ namespace DocumentTranslation.Web.Pages
     {
         private readonly ILogger<TranslateModel> _logger;
         private readonly IWebHostEnvironment _environment;
+        private readonly DocumentTranslationService.Core.DocumentTranslationService _translationService;
+        private readonly DocumentTranslationBusiness _translationBusiness;
 
-        public TranslateModel(ILogger<TranslateModel> logger, IWebHostEnvironment environment)
+        public TranslateModel(
+            ILogger<TranslateModel> logger,
+            IWebHostEnvironment environment,
+            DocumentTranslationService.Core.DocumentTranslationService translationService,
+            DocumentTranslationBusiness translationBusiness)
         {
             _logger = logger;
             _environment = environment;
+            _translationService = translationService;
+            _translationBusiness = translationBusiness;
         }
 
         [BindProperty]
@@ -31,27 +38,17 @@ namespace DocumentTranslation.Web.Pages
         public bool IsTranslating { get; set; }
         public List<string> TranslatedFiles { get; set; } = new();
 
-        public List<LanguageOption> AvailableLanguages { get; set; } = new()
-        {
-            new("fr", "French"),
-            new("es", "Spanish"),
-            new("de", "German"),
-            new("it", "Italian"),
-            new("pt", "Portuguese"),
-            new("zh", "Chinese (Simplified)"),
-            new("ja", "Japanese"),
-            new("ko", "Korean"),
-            new("ru", "Russian"),
-            new("ar", "Arabic")
-        };
+        public List<LanguageOption> AvailableLanguages { get; set; } = new();
 
-        public void OnGet()
+        public async Task OnGetAsync()
         {
-            // Page load
+            await LoadAvailableLanguagesAsync();
         }
 
         public async Task<IActionResult> OnPostAsync()
         {
+            await LoadAvailableLanguagesAsync();
+
             if (UploadedFile == null || UploadedFile.Length == 0)
             {
                 ErrorMessage = "Please select a file to upload.";
@@ -66,13 +63,8 @@ namespace DocumentTranslation.Web.Pages
 
             try
             {
-                // First, test if CLI is accessible and configured
-                var configTestResult = await TestCliConfigurationAsync();
-                if (!configTestResult.Success)
-                {
-                    ErrorMessage = $"CLI Configuration Error: {configTestResult.Error}";
-                    return Page();
-                }
+                // Initialize the translation service
+                await _translationService.InitializeAsync();
 
                 // Create uploads directory
                 var uploadsPath = Path.Combine(_environment.WebRootPath, "uploads");
@@ -92,29 +84,56 @@ namespace DocumentTranslation.Web.Pages
 
                 // Create output directory
                 var outputPath = Path.Combine(uploadsPath, "output");
-                if (!Directory.Exists(outputPath))
+                if (Directory.Exists(outputPath))
                 {
-                    Directory.CreateDirectory(outputPath);
+                    // Clean up existing files
+                    Directory.Delete(outputPath, true);
                 }
+                Directory.CreateDirectory(outputPath);
 
-                // Run translation
-                var result = await RunTranslationAsync(filePath, outputPath, TargetLanguage, SourceLanguage);
-                
-                if (result.Success)
+                // Setup event handlers for translation progress
+                _translationBusiness.OnStatusUpdate += (sender, status) =>
                 {
-                    Message = $"Translation completed successfully! File translated to {TargetLanguage}.";
+                    _logger.LogInformation($"Translation status: {status}");
+                };
+
+                _translationBusiness.OnThereWereErrors += (sender, errors) =>
+                {
+                    _logger.LogError($"Translation errors: {errors}");
+                };
+
+                // Run translation using the service library
+                var filesToTranslate = new List<string> { filePath };
+                var targetLanguages = new string[] { TargetLanguage };
+                var fromLanguage = string.IsNullOrEmpty(SourceLanguage) ? null : SourceLanguage;
+
+                await _translationBusiness.RunAsync(
+                    filestotranslate: filesToTranslate,
+                    fromlanguage: fromLanguage,
+                    tolanguages: targetLanguages,
+                    glossaryfiles: null,
+                    targetFolder: outputPath);
+
+                Message = $"Translation completed successfully! File translated to {TargetLanguage}.";
+                
+                // Get list of translated files
+                if (Directory.Exists(_translationBusiness.TargetFolder))
+                {
+                    var files = Directory.GetFiles(_translationBusiness.TargetFolder);
+                    TranslatedFiles = files.Select(f => Path.GetFileName(f)).ToList();
                     
-                    // Get list of translated files
-                    if (Directory.Exists(outputPath))
+                    // Copy files to the web output directory for download
+                    foreach (var file in files)
                     {
-                        var files = Directory.GetFiles(outputPath);
-                        TranslatedFiles = files.Select(f => Path.GetFileName(f)).ToList();
+                        var outputFile = Path.Combine(outputPath, Path.GetFileName(file));
+                        System.IO.File.Copy(file, outputFile, true);
                     }
                 }
-                else
-                {
-                    ErrorMessage = $"Translation failed: {result.Error}";
-                }
+            }
+            catch (DocumentTranslationService.Core.DocumentTranslationService.CredentialsException ex)
+            {
+                _logger.LogError(ex, "Credentials error during translation");
+                ErrorMessage = $"Configuration error: {ex.Message}. Please check your Azure Translation Service credentials.";
             }
             catch (Exception ex)
             {
@@ -125,161 +144,39 @@ namespace DocumentTranslation.Web.Pages
             return Page();
         }
 
-        private async Task<(bool Success, string Error)> TestCliConfigurationAsync()
+        private async Task LoadAvailableLanguagesAsync()
         {
             try
             {
-                var wrapperPath = Path.Combine(Directory.GetCurrentDirectory(), "run-doctr.py");
+                await _translationService.InitializeAsync();
                 
-                if (!System.IO.File.Exists(wrapperPath))
+                AvailableLanguages.Clear();
+                foreach (var lang in _translationService.Languages.Values)
                 {
-                    return (false, $"CLI wrapper script not found at: {wrapperPath}");
+                    AvailableLanguages.Add(new LanguageOption(lang.LangCode, lang.Name ?? lang.LangCode));
                 }
 
-                var processInfo = new ProcessStartInfo
-                {
-                    FileName = "python3",
-                    Arguments = $"{wrapperPath} config test",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WorkingDirectory = Directory.GetCurrentDirectory()
-                };
-
-                using var process = Process.Start(processInfo);
-                if (process == null)
-                {
-                    return (false, "Failed to start CLI process");
-                }
-
-                var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                
-                try
-                {
-                    var output = await process.StandardOutput.ReadToEndAsync();
-                    var error = await process.StandardError.ReadToEndAsync();
-                    
-                    await process.WaitForExitAsync(timeoutCts.Token);
-
-                    if (process.ExitCode == 0)
-                    {
-                        return (true, string.Empty);
-                    }
-                    else
-                    {
-                        var errorMsg = !string.IsNullOrEmpty(error) ? error : output;
-                        return (false, $"Configuration test failed: {errorMsg}");
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    try { process.Kill(true); } catch { }
-                    return (false, "Configuration test timed out");
-                }
+                // Sort by name for better UX
+                AvailableLanguages = AvailableLanguages.OrderBy(l => l.Name).ToList();
             }
             catch (Exception ex)
             {
-                return (false, $"Error testing configuration: {ex.Message}");
-            }
-        }
-
-        private async Task<(bool Success, string Error)> RunTranslationAsync(string inputFile, string outputDir, string targetLang, string sourceLang)
-        {
-            try
-            {
-                // Use the Python wrapper script instead of calling doctr directly
-                var wrapperPath = Path.Combine(Directory.GetCurrentDirectory(), "run-doctr.py");
+                _logger.LogWarning(ex, "Failed to load available languages, using default list");
                 
-                // Build command arguments
-                var args = $"{wrapperPath} translate \"{inputFile}\" \"{outputDir}\" --to {targetLang}";
-                if (!string.IsNullOrEmpty(sourceLang))
+                // Fallback to a default list if service is not configured
+                AvailableLanguages = new List<LanguageOption>
                 {
-                    args += $" --from {sourceLang}";
-                }
-
-                _logger.LogInformation($"Running command: python3 {args}");
-
-                var processInfo = new ProcessStartInfo
-                {
-                    FileName = "python3",
-                    Arguments = args,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WorkingDirectory = Directory.GetCurrentDirectory()
+                    new("fr", "French"),
+                    new("es", "Spanish"),
+                    new("de", "German"),
+                    new("it", "Italian"),
+                    new("pt", "Portuguese"),
+                    new("zh", "Chinese (Simplified)"),
+                    new("ja", "Japanese"),
+                    new("ko", "Korean"),
+                    new("ru", "Russian"),
+                    new("ar", "Arabic")
                 };
-
-                using var process = Process.Start(processInfo);
-                if (process == null)
-                {
-                    _logger.LogError("Failed to start translation process");
-                    return (false, "Failed to start translation process");
-                }
-
-                // Set a timeout for the process (e.g., 10 minutes)
-                var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
-                
-                try
-                {
-                    var outputTask = process.StandardOutput.ReadToEndAsync();
-                    var errorTask = process.StandardError.ReadToEndAsync();
-                    
-                    // Wait for process completion with timeout
-                    await process.WaitForExitAsync(timeoutCts.Token);
-                    
-                    var output = await outputTask;
-                    var error = await errorTask;
-
-                    _logger.LogInformation($"Translation output: {output}");
-                    if (!string.IsNullOrEmpty(error))
-                    {
-                        _logger.LogWarning($"Translation error: {error}");
-                    }
-                    
-                    // Check if the process completed successfully
-                    if (process.ExitCode == 0)
-                    {
-                        // Verify that output files were created
-                        if (Directory.Exists(outputDir) && Directory.GetFiles(outputDir, "*", SearchOption.AllDirectories).Length > 0)
-                        {
-                            return (true, string.Empty);
-                        }
-                        else
-                        {
-                            return (false, "Translation completed but no output files were generated");
-                        }
-                    }
-                    else
-                    {
-                        // Process failed - extract meaningful error message
-                        string errorMsg = "Translation failed";
-                        
-                        if (!string.IsNullOrEmpty(error))
-                        {
-                            errorMsg = error.Trim();
-                        }
-                        else if (!string.IsNullOrEmpty(output) && output.Contains("FAIL"))
-                        {
-                            errorMsg = output.Trim();
-                        }
-                        
-                        _logger.LogWarning($"Translation failed with exit code {process.ExitCode}: {errorMsg}");
-                        return (false, errorMsg);
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    _logger.LogWarning("Translation process timed out");
-                    try { process.Kill(true); } catch { }
-                    return (false, "Translation process timed out");
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to run translation command");
-                return (false, $"Failed to run translation command: {ex.Message}");
             }
         }
 
