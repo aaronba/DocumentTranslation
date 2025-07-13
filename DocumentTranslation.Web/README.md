@@ -1,15 +1,50 @@
-# Document Translation Web UI
+# DocumentTranslation.Web
 
-A simple ASP.NET Core web application that provides a user-friendly interface for document translation using the DocumentTranslation.CLI command line tool.
+A web application for translating documents using Azure Translator Service.
+
+## Overview
+
+The web application has been **refactored** to use the DocumentTranslationService library directly instead of calling the CLI executable. This provides better performance, error handling, and maintainability.
+
+## Configuration
+
+### Required Settings
+
+Update the `DocumentTranslation` section in `appsettings.json` or `appsettings.Development.json` with your Azure credentials:
+
+```json
+{
+  "DocumentTranslation": {
+    "AzureResourceName": "your-translator-resource-name",
+    "SubscriptionKey": "your-translator-subscription-key", 
+    "AzureRegion": "your-azure-region",
+    "TextTransEndpoint": "https://api.cognitive.microsofttranslator.com/",
+    "ShowExperimental": false,
+    "Category": "",
+    "ConnectionStrings": {
+      "StorageConnectionString": "your-azure-storage-connection-string"
+    }
+  }
+}
+```
+
+### Azure Resources Required
+
+1. **Azure Translator Service**: For document translation
+   - Get the resource name and subscription key from the Azure portal
+   - Note the region where your translator resource is deployed
+
+2. **Azure Storage Account**: For temporary file storage during translation
+   - Get the connection string from the Azure portal
 
 ## Features
 
-- **File Upload**: Easy drag-and-drop file upload interface
-- **Multiple Languages**: Support for translation to/from multiple languages
-- **Auto-Detection**: Automatic source language detection
-- **Modern UI**: Responsive Bootstrap-based interface with Font Awesome icons
-- **Multiple Formats**: Support for Word, PDF, PowerPoint, Excel, Text, HTML, and Markdown files
-- **CLI Integration**: Seamless integration with the existing DocumentTranslation.CLI tool
+- **File Upload**: Support for multiple document formats (Word, PDF, PowerPoint, Excel, Text, HTML, Markdown)
+- **Language Detection**: Automatic source language detection or manual selection
+- **Multiple Target Languages**: Translate to any supported Azure Translator language
+- **Direct Integration**: Uses DocumentTranslationService library directly (no CLI dependency)
+- **File Download**: Download individual translated files or all files as a ZIP archive
+- **Dynamic Language Loading**: Languages are loaded from Azure Translator Service
 
 ## Supported File Formats
 
@@ -21,28 +56,7 @@ A simple ASP.NET Core web application that provides a user-friendly interface fo
 - HTML Files (.html)
 - Markdown (.md)
 
-## Prerequisites
-
-1. **.NET 8.0**: Make sure you have .NET 8.0 SDK installed
-2. **DocumentTranslation.CLI**: The CLI tool must be built and available at `../DocumentTranslation.CLI/bin/Debug/net8.0/`
-3. **Azure Configuration**: The CLI tool must be properly configured with Azure credentials
-
-## Getting Started
-
-### 1. Configure the CLI Tool
-
-First, make sure the DocumentTranslation.CLI is configured with your Azure credentials:
-
-```bash
-cd ../DocumentTranslation.CLI/bin/Debug/net8.0
-./doctr config set --key "your-azure-key"
-./doctr config set --storage "your-storage-connection-string"
-./doctr config set --endpoint "https://your-resource.cognitiveservices.azure.com/"
-./doctr config set --region "your-region"
-./doctr config test
-```
-
-### 2. Run the Web Application
+## Running the Application
 
 ```bash
 # Build the application
@@ -52,77 +66,59 @@ dotnet build
 dotnet run
 ```
 
-The application will start and be available at `https://localhost:5001` (or the URL shown in the console).
+The web application will be available at `https://localhost:5001` (or the port specified in your launch settings).
 
-### 3. Using the Application
+## Architecture Changes
 
-1. Navigate to the **Translate** page
-2. Upload your document using the file picker
-3. Select the target language for translation
-4. Optionally specify the source language (or leave blank for auto-detection)
-5. Click **Translate Document**
-6. Download the translated document when ready
+### Before (CLI Integration)
+- Web app called DocumentTranslation.CLI via Python wrapper scripts
+- Process invocation overhead and complexity
+- Limited error handling and logging
+- File format handling in CLI
 
-## Project Structure
+### After (Direct Library Integration)
+- Web app references DocumentTranslationService project directly
+- Uses dependency injection to manage translation services
+- Handles file upload/download within the web app
+- Better error handling and logging
+- No external process dependencies
 
-```
-DocumentTranslation.Web/
-├── Pages/
-│   ├── Shared/
-│   │   └── _Layout.cshtml          # Main layout with navigation
-│   ├── Index.cshtml                # Home page
-│   ├── Translate.cshtml            # Translation page UI
-│   ├── Translate.cshtml.cs         # Translation page logic
-│   └── Privacy.cshtml              # Privacy page
-├── wwwroot/
-│   ├── uploads/                    # Uploaded files directory
-│   ├── css/                        # Custom styles
-│   └── js/                         # Client-side scripts
-├── Program.cs                      # Application configuration
-└── DocumentTranslation.Web.csproj # Project file
-```
-
-## Configuration
-
-### File Upload Limits
-
-The application is configured to handle files up to 100MB in size. You can modify these limits in `Program.cs`:
-
-```csharp
-builder.Services.Configure<FormOptions>(options =>
-{
-    options.MultipartBodyLengthLimit = 100 * 1024 * 1024; // 100MB
-});
-```
-
-### CLI Path
-
-The application looks for the CLI tool at `../DocumentTranslation.CLI/bin/Debug/net8.0/doctr`. If your CLI is located elsewhere, update the path in `Translate.cshtml.cs`:
-
-```csharp
-var cliPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "DocumentTranslation.CLI", "bin", "Debug", "net8.0", "doctr");
-```
+### Benefits of Refactoring
+- **Performance**: Eliminates process invocation overhead
+- **Robustness**: Better error handling and resource management
+- **Maintainability**: Type-safe integration, easier debugging
+- **Scalability**: Better suited for web deployment scenarios
+- **Security**: No external script dependencies
 
 ## Development
 
-### Adding New Languages
+### Project Structure
 
-To add support for additional languages, update the `AvailableLanguages` list in `Translate.cshtml.cs`:
-
-```csharp
-public List<LanguageOption> AvailableLanguages { get; set; } = new()
-{
-    new("fr", "French"),
-    new("es", "Spanish"),
-    // Add more languages here
-};
+```
+DocumentTranslation.Web/
+├── Models/
+│   └── DocumentTranslationOptions.cs   # Configuration model
+├── Pages/
+│   ├── Shared/
+│   │   └── _Layout.cshtml              # Main layout
+│   ├── Index.cshtml                    # Home page
+│   ├── Translate.cshtml                # Translation page UI
+│   ├── Translate.cshtml.cs             # Translation logic (REFACTORED)
+│   └── Privacy.cshtml                  # Privacy page
+├── wwwroot/
+│   └── uploads/                        # Uploaded files directory
+├── Program.cs                          # DI configuration (UPDATED)
+├── appsettings.json                    # Configuration (UPDATED)
+└── DocumentTranslation.Web.csproj     # Project references (UPDATED)
 ```
 
-### Customizing the UI
+### Key Changes Made
 
-- **Styles**: Add custom CSS to `wwwroot/css/site.css`
-- **Scripts**: Add custom JavaScript to `wwwroot/js/site.js`
-- **Layout**: Modify `Pages/Shared/_Layout.cshtml` for global changes
+1. **DocumentTranslation.Web.csproj**: Added project reference to DocumentTranslationService
+2. **Program.cs**: Added DI registration for translation services
+3. **Translate.cshtml.cs**: Complete refactor to use service library instead of CLI
+4. **appsettings.json**: Added Azure configuration section
+5. **Models/DocumentTranslationOptions.cs**: Configuration model for settings
 
 ## Security Considerations
 
@@ -130,19 +126,23 @@ public List<LanguageOption> AvailableLanguages { get; set; } = new()
 - Consider implementing file cleanup routines for production use
 - Validate file types and sizes on both client and server side
 - Consider adding authentication for production deployments
+- Azure credentials should be stored securely (use Azure Key Vault in production)
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **CLI not found**: Ensure the DocumentTranslation.CLI is built and the path is correct
-2. **Configuration errors**: Run `doctr config test` to verify CLI configuration
+1. **Configuration errors**: Ensure Azure credentials are properly set in appsettings
+2. **Service initialization**: Check Azure Translator and Storage account connectivity
 3. **File upload errors**: Check file size limits and format compatibility
 4. **Translation failures**: Verify Azure credentials and network connectivity
 
-### Logs
+### Migration from CLI
 
-The application logs translation attempts and errors. Check the console output when running in development mode.
+If you previously used the CLI-based version:
+1. Remove any CLI configuration files or wrapper scripts
+2. Update your Azure credentials in the web app configuration
+3. The wrapper scripts (`run-doctr.py`, `run-doctr.sh`) are no longer needed
 
 ## License
 

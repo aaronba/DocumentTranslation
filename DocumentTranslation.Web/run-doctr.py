@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
 """
-Wrapper script to run doctr CLI without console input issues.
-This script starts the doctr process in a completely isolated environment.
+OBSOLETE: This wrapper script is no longer needed.
+
+The DocumentTranslation.Web project has been refactored to use the 
+DocumentTranslationService library directly instead of calling the CLI executable.
+
+This provides better integration, performance, and maintainability.
+
+Configure Azure credentials in the web application's appsettings.json instead.
 """
+
+# Legacy wrapper script - no longer used
+# Wrapper script to run doctr CLI without console input issues.
+# This script starts the doctr process in a completely isolated environment.
 
 import sys
 import subprocess
