@@ -33,7 +33,7 @@
                         </div>
                     }
 
-                    <form method="post" enctype="multipart/form-data">
+                    <form method="post" enctype="multipart/form-data" id="translationForm">
                         <div class="mb-3">
                             <label for="UploadedFile" class="form-label">
                                 <i class="fas fa-file-upload"></i>
@@ -82,12 +82,26 @@
                         </div>
 
                         <div class="d-grid gap-2">
-                            <button type="submit" class="btn btn-primary btn-lg">
-                                <i class="fas fa-language"></i>
-                                Translate Document
+                            <button type="submit" class="btn btn-primary btn-lg" id="translateButton">
+                                <span class="btn-text">
+                                    <i class="fas fa-language"></i>
+                                    Translate Document
+                                </span>
                             </button>
                         </div>
                     </form>
+
+                    <!-- Progress Indicator -->
+                    <div id="translationProgress" class="translation-progress">
+                        <div class="progress-content">
+                            <div class="progress-spinner"></div>
+                            <div class="progress-message" id="progressMessage">Starting translation...</div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill progress-bar-indeterminate" id="progressBar"></div>
+                            </div>
+                            <div class="progress-status" id="progressStatus">Please wait while your document is being translated</div>
+                        </div>
+                    </div>
 
                     @if (Model.TranslatedFiles.Any())
                     {
@@ -156,10 +170,107 @@
 
 @section Scripts {
     <script>
-        // Auto-dismiss alerts after 5 seconds
-        setTimeout(function() {
-            $('.alert').alert('close');
-        }, 5000);
+        // Show progress indicator
+        function showProgress() {
+            document.getElementById('translationProgress').classList.add('show');
+            document.getElementById('translateButton').classList.add('btn-loading');
+            document.getElementById('translateButton').disabled = true;
+        }
+
+        // Hide progress indicator
+        function hideProgress() {
+            document.getElementById('translationProgress').classList.remove('show');
+            document.getElementById('translateButton').classList.remove('btn-loading');
+            document.getElementById('translateButton').disabled = false;
+        }
+
+        // Update progress message
+        function updateProgress(message, status) {
+            document.getElementById('progressMessage').textContent = message;
+            document.getElementById('progressStatus').textContent = `Status: ${status}`;
+        }
+
+        // Show success message
+        function showSuccess(message) {
+            const alertHtml = `
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    <i class="fas fa-check-circle"></i>
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            insertAlert(alertHtml);
+        }
+
+        // Show error message
+        function showError(message) {
+            const alertHtml = `
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            insertAlert(alertHtml);
+        }
+
+        // Insert alert into the page
+        function insertAlert(alertHtml) {
+            const cardBody = document.querySelector('.card-body');
+            const form = document.getElementById('translationForm');
+            form.insertAdjacentHTML('beforebegin', alertHtml);
+            
+            // Auto-dismiss after 5 seconds
+            setTimeout(function() {
+                const alert = cardBody.querySelector('.alert');
+                if (alert) {
+                    alert.remove();
+                }
+            }, 5000);
+        }
+
+        // Handle form submission
+        document.getElementById('translationForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const form = e.target;
+            const formData = new FormData(form);
+
+            try {
+                showProgress();
+                updateProgress('Preparing translation...', 'Starting');
+
+                // Simulate progress updates for demo
+                setTimeout(() => updateProgress('Uploading file...', 'Uploading'), 500);
+                setTimeout(() => updateProgress('Processing document...', 'Processing'), 1500);
+                setTimeout(() => updateProgress('Translating content...', 'Translating'), 3000);
+                setTimeout(() => updateProgress('Finalizing translation...', 'Finalizing'), 5000);
+
+                const response = await fetch('/api/mocktranslation/translate', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText || 'Translation failed');
+                }
+
+                const result = await response.json();
+                
+                hideProgress();
+                showSuccess(result.message || 'Translation completed successfully!');
+                
+                // Reload to show download section after a delay
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+
+            } catch (error) {
+                hideProgress();
+                showError(`Translation failed: ${error.message}`);
+            }
+        });
 
         // File validation
         document.querySelector('input[type="file"]').addEventListener('change', function(e) {

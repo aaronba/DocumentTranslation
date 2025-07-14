@@ -2,11 +2,14 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.IIS;
 using DocumentTranslation.Web.Models;
 using DocumentTranslationService.Core;
+using DocumentTranslation.Web.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorPages();
+builder.Services.AddControllers();
+builder.Services.AddSignalR();
 
 // Configure DocumentTranslation settings
 builder.Services.Configure<DocumentTranslationOptions>(
@@ -65,6 +68,8 @@ app.UseRouting();
 app.UseAuthorization();
 
 app.MapRazorPages();
+app.MapControllers();
+app.MapHub<TranslationProgressHub>("/translationProgressHub");
 
 app.Run();
 
