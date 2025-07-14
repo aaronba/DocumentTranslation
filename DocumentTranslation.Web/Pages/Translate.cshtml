@@ -72,9 +72,14 @@
                                     <select class="form-select" asp-for="TargetLanguage" required>
                                         @foreach (var lang in Model.AvailableLanguages)
                                         {
-                                            <option value="@lang.Code" selected="@(lang.Code == Model.TargetLanguage)">
-                                                @lang.Name
-                                            </option>
+                                            @if (lang.Code == Model.TargetLanguage)
+                                            {
+                                                <option value="@lang.Code" selected>@lang.Name</option>
+                                            }
+                                            else
+                                            {
+                                                <option value="@lang.Code">@lang.Name</option>
+                                            }
                                         }
                                     </select>
                                 </div>
@@ -169,7 +174,53 @@
 </div>
 
 @section Scripts {
+    <script src="~/lib/microsoft-signalr/signalr.min.js"></script>
     <script>
+        let connection;
+        let connectionId;
+
+        // Initialize SignalR connection
+        async function initializeSignalR() {
+            connection = new signalR.HubConnectionBuilder()
+                .withUrl("/translationProgressHub")
+                .build();
+
+            connection.on("StatusUpdate", function (update) {
+                updateProgress(update.message, update.status);
+            });
+
+            connection.on("TranslationError", function (error) {
+                hideProgress();
+                showError(error.message);
+            });
+
+            connection.on("TranslationComplete", function (result) {
+                console.log("TranslationComplete received:", result);
+                hideProgress();
+                showSuccess(result.message || 'Translation completed successfully!');
+                
+                // Instead of reloading, show download section dynamically
+                if (result.files && result.files.length > 0) {
+                    console.log("Showing download section for files:", result.files);
+                    showDownloadSection(result.files);
+                } else {
+                    console.log("No files returned, will reload page");
+                    // If no files returned, reload after a delay to check server state
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 2000);
+                }
+            });
+
+            try {
+                await connection.start();
+                connectionId = connection.connectionId;
+                console.log("SignalR Connected with ID:", connectionId);
+            } catch (err) {
+                console.error("SignalR Connection Error:", err);
+            }
+        }
+
         // Show progress indicator
         function showProgress() {
             document.getElementById('translationProgress').classList.add('show');
@@ -187,7 +238,12 @@
         // Update progress message
         function updateProgress(message, status) {
             document.getElementById('progressMessage').textContent = message;
-            document.getElementById('progressStatus').textContent = `Status: ${status}`;
+            // Use more appropriate status names for display
+            let displayStatus = status;
+            if (status === 'NotStarted' || status === 'InProgress') {
+                displayStatus = 'Translating';
+            }
+            document.getElementById('progressStatus').textContent = `Status: ${displayStatus}`;
         }
 
         // Show success message
@@ -214,6 +270,61 @@
             insertAlert(alertHtml);
         }
 
+        // Show download section with translated files
+        function showDownloadSection(files) {
+            // Remove existing download section if any
+            const existingSection = document.querySelector('.download-section');
+            if (existingSection) {
+                existingSection.remove();
+            }
+            
+            // Create download section HTML
+            let downloadHtml = `
+                <div class="mt-4 p-3 bg-light rounded download-section">
+                    <h5><i class="fas fa-download"></i> Download Translated Documents</h5>
+            `;
+            
+            if (files.length === 1) {
+                downloadHtml += `
+                    <p>Your translated document is ready for download.</p>
+                    <a href="/Translate?handler=Download&fileName=${encodeURIComponent(files[0])}" class="btn btn-success">
+                        <i class="fas fa-download"></i>
+                        Download ${files[0]}
+                    </a>
+                `;
+            } else {
+                downloadHtml += `
+                    <p>Your translated documents are ready for download.</p>
+                    <div class="mb-3">
+                        <a href="/Translate?handler=DownloadAll" class="btn btn-success">
+                            <i class="fas fa-file-archive"></i>
+                            Download All Files (ZIP)
+                        </a>
+                    </div>
+                    <div class="list-group">
+                `;
+                
+                files.forEach(file => {
+                    downloadHtml += `
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-file"></i> ${file}</span>
+                            <a href="/Translate?handler=Download&fileName=${encodeURIComponent(file)}" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-download"></i> Download
+                            </a>
+                        </div>
+                    `;
+                });
+                
+                downloadHtml += `</div>`;
+            }
+            
+            downloadHtml += `</div>`;
+            
+            // Insert download section after the form
+            const form = document.getElementById('translationForm');
+            form.insertAdjacentHTML('afterend', downloadHtml);
+        }
+
         // Insert alert into the page
         function insertAlert(alertHtml) {
             const cardBody = document.querySelector('.card-body');
@@ -234,19 +345,113 @@
             e.preventDefault();
             
             const form = e.target;
-            const formData = new FormData(form);
+            
+            // Debug: Log the actual form HTML
+            console.log('Form HTML:', form.innerHTML);
+            
+            // Get form values - try multiple selectors to find the elements
+            const fileInput = form.querySelector('input[type="file"]') || 
+                             form.querySelector('input[name="UploadedFile"]') ||
+                             form.querySelector('#UploadedFile');
+            
+            const targetLanguageSelect = form.querySelector('select[name="TargetLanguage"]') ||
+                                        form.querySelector('#TargetLanguage') ||
+                                        form.querySelector('select[required]');
+            
+            const sourceLanguageSelect = form.querySelector('select[name="SourceLanguage"]') ||
+                                        form.querySelector('#SourceLanguage') ||
+                                        form.querySelector('select:not([required])');
+            
+            // Debug logging
+            console.log('Form elements found:');
+            console.log('File input:', fileInput);
+            console.log('Target language select:', targetLanguageSelect);
+            console.log('Source language select:', sourceLanguageSelect);
+            
+            if (targetLanguageSelect) {
+                console.log('Target language element details:');
+                console.log('- tagName:', targetLanguageSelect.tagName);
+                console.log('- name:', targetLanguageSelect.name);
+                console.log('- id:', targetLanguageSelect.id);
+                console.log('- value:', targetLanguageSelect.value);
+                console.log('- selectedIndex:', targetLanguageSelect.selectedIndex);
+                console.log('- options length:', targetLanguageSelect.options.length);
+                if (targetLanguageSelect.options.length > 0) {
+                    console.log('- selected option:', targetLanguageSelect.options[targetLanguageSelect.selectedIndex]);
+                    console.log('- selected option value:', targetLanguageSelect.options[targetLanguageSelect.selectedIndex]?.value);
+                }
+            }
+            
+            // Also log all form elements to debug
+            console.log('All form elements:');
+            const allInputs = form.querySelectorAll('input, select');
+            allInputs.forEach((element, index) => {
+                console.log(`Element ${index}:`, {
+                    tagName: element.tagName,
+                    type: element.type,
+                    name: element.name,
+                    id: element.id,
+                    value: element.value,
+                    required: element.required
+                });
+            });
+            
+            // Validate required fields
+            if (!fileInput) {
+                showError('File input field not found.');
+                return;
+            }
+            
+            if (!targetLanguageSelect) {
+                showError('Target language field not found.');
+                return;
+            }
+            
+            if (!fileInput.files || !fileInput.files[0]) {
+                showError('Please select a file to translate.');
+                return;
+            }
+            
+            if (!targetLanguageSelect.value || targetLanguageSelect.value === '') {
+                showError('Please select a target language for translation.');
+                return;
+            }
+            
+            // Create FormData manually with the correct values
+            const formData = new FormData();
+            
+            // Add the file
+            formData.append('file', fileInput.files[0]);
+            
+            // Add target language
+            formData.append('targetLanguage', targetLanguageSelect.value);
+            
+            // Add source language if selected
+            if (sourceLanguageSelect && sourceLanguageSelect.value && sourceLanguageSelect.value !== '') {
+                formData.append('sourceLanguage', sourceLanguageSelect.value);
+            }
+            
+            // Debug: Log final FormData contents
+            console.log('Final FormData contents being sent to API:');
+            for (let [key, value] of formData.entries()) {
+                console.log(key, ':', value);
+                if (value instanceof File) {
+                    console.log(`  File details - name: ${value.name}, size: ${value.size}, type: ${value.type}`);
+                }
+            }
 
             try {
                 showProgress();
-                updateProgress('Preparing translation...', 'Starting');
+                updateProgress('Uploading document to Azure...', 'Translating');
 
-                // Simulate progress updates for demo
-                setTimeout(() => updateProgress('Uploading file...', 'Uploading'), 500);
-                setTimeout(() => updateProgress('Processing document...', 'Processing'), 1500);
-                setTimeout(() => updateProgress('Translating content...', 'Translating'), 3000);
-                setTimeout(() => updateProgress('Finalizing translation...', 'Finalizing'), 5000);
+                // Join the SignalR group for this translation
+                if (connection && connectionId) {
+                    await connection.invoke("JoinTranslationGroup", connectionId);
+                    // Add connectionId to form data for the server to send updates
+                    formData.append('connectionId', connectionId);
+                }
 
-                const response = await fetch('/api/mocktranslation/translate', {
+                const response = await fetch('/api/translation/translate', {
                     method: 'POST',
                     body: formData
                 });
@@ -258,17 +463,17 @@
 
                 const result = await response.json();
                 
-                hideProgress();
-                showSuccess(result.message || 'Translation completed successfully!');
-                
-                // Reload to show download section after a delay
-                setTimeout(() => {
-                    window.location.reload();
-                }, 2000);
+                // Don't hide progress here - let SignalR handle it when translation is complete
+                updateProgress('Translation submitted successfully. Processing document...', 'InProgress');
 
             } catch (error) {
                 hideProgress();
                 showError(`Translation failed: ${error.message}`);
+                
+                // Leave the SignalR group on error
+                if (connection && connectionId) {
+                    await connection.invoke("LeaveTranslationGroup", connectionId);
+                }
             }
         });
 
@@ -282,6 +487,18 @@
                     e.target.value = '';
                     return;
                 }
+            }
+        });
+
+        // Initialize SignalR when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeSignalR();
+        });
+
+        // Clean up SignalR connection when page unloads
+        window.addEventListener('beforeunload', function() {
+            if (connection) {
+                connection.stop();
             }
         });
     </script>

@@ -19,6 +19,14 @@ builder.Services.Configure<DocumentTranslationOptions>(
 builder.Services.AddSingleton<DocumentTranslationService.Core.DocumentTranslationService>(serviceProvider =>
 {
     var options = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<DocumentTranslationOptions>>().Value;
+    
+    // Add debug logging to see what values we're getting
+    Console.WriteLine($"[DEBUG] AzureResourceName: {options.AzureResourceName}");
+    Console.WriteLine($"[DEBUG] SubscriptionKey: {(string.IsNullOrEmpty(options.SubscriptionKey) ? "EMPTY" : "***SET***")}");
+    Console.WriteLine($"[DEBUG] AzureRegion: {options.AzureRegion}");
+    Console.WriteLine($"[DEBUG] TextTransEndpoint: {options.TextTransEndpoint}");
+    Console.WriteLine($"[DEBUG] StorageConnectionString: {(string.IsNullOrEmpty(options.ConnectionStrings.StorageConnectionString) ? "EMPTY" : "***SET***")}");
+    
     return new DocumentTranslationService.Core.DocumentTranslationService(
         options.SubscriptionKey,
         options.AzureResourceName,
