@@ -280,12 +280,18 @@ namespace DocumentTranslationService.Core
             catch (Azure.RequestFailedException ex)
             {
                 OnStatusUpdate?.Invoke(this, new StatusResponse(TranslationService.DocumentTranslationOperation, ex.ErrorCode + ": " + ex.Message));
-                logger.WriteLine(ex.ErrorCode + ": " + ex.Message);
+                logger.WriteLine($"Azure Request Failed - Error Code: {ex.ErrorCode}, Status: {ex.Status}, Message: {ex.Message}");
+                OnThereWereErrors?.Invoke(this, $"Azure Request Failed - Error Code: {ex.ErrorCode}, Status: {ex.Status}, Message: {ex.Message}");
+                if (!Nodelete) await DeleteContainersAsync(tolanguages);
+                return;
             }
             catch (Exception ex)
             {
                 OnStatusUpdate?.Invoke(this, new StatusResponse(TranslationService.DocumentTranslationOperation, ex.Message));
-                logger.WriteLine(ex.Message);
+                logger.WriteLine($"Translation submission failed: {ex.Message}");
+                OnThereWereErrors?.Invoke(this, $"Translation submission failed: {ex.Message}");
+                if (!Nodelete) await DeleteContainersAsync(tolanguages);
+                return;
             }
             if (TranslationService.DocumentTranslationOperation is null)
             {
@@ -475,6 +481,7 @@ namespace DocumentTranslationService.Core
 
             Dictionary<string, Uri> sasUriTargets = GenerateSasUriTargets(tolanguages, targetContainers, UseManagedIdentity);
             List<TranslationTarget> translationTargets = new();
+            logger.WriteLine($"Category value: '{TranslationService.Category}' (Length: {TranslationService.Category?.Length ?? -1})");
             foreach (string lang in tolanguages)
             {
                 TranslationTarget translationTarget = new(sasUriTargets[lang], lang);
@@ -485,9 +492,14 @@ namespace DocumentTranslationService.Core
                     else
                         foreach (var glos in glossary.Glossaries) translationTarget.Glossaries.Add(glos.Value);
                 }
-                if (TranslationService.Category is not null)
+                if (!string.IsNullOrEmpty(TranslationService.Category))
                 {
+                    logger.WriteLine($"Setting CategoryId to: '{TranslationService.Category}'");
                     translationTarget.CategoryId = TranslationService.Category;
+                }
+                else
+                {
+                    logger.WriteLine("Category is null or empty - not setting CategoryId");
                 }
                 translationTargets.Add(translationTarget);
             }

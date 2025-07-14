@@ -107,6 +107,7 @@ namespace DocumentTranslation.Web.Pages
                 var targetLanguages = new string[] { TargetLanguage };
                 var fromLanguage = string.IsNullOrEmpty(SourceLanguage) ? null : SourceLanguage;
 
+                // Use the output path directly as the target folder to avoid file copying
                 await _translationBusiness.RunAsync(
                     filestotranslate: filesToTranslate,
                     fromlanguage: fromLanguage,
@@ -116,18 +117,19 @@ namespace DocumentTranslation.Web.Pages
 
                 Message = $"Translation completed successfully! File translated to {TargetLanguage}.";
                 
-                // Get list of translated files
-                if (Directory.Exists(_translationBusiness.TargetFolder))
+                // Get list of translated files directly from output folder
+                if (Directory.Exists(outputPath))
                 {
-                    var files = Directory.GetFiles(_translationBusiness.TargetFolder);
-                    TranslatedFiles = files.Select(f => Path.GetFileName(f)).ToList();
+                    _logger.LogInformation($"Output folder: {outputPath}");
+                    var files = Directory.GetFiles(outputPath);
+                    _logger.LogInformation($"Found {files.Length} translated files");
                     
-                    // Copy files to the web output directory for download
-                    foreach (var file in files)
-                    {
-                        var outputFile = Path.Combine(outputPath, Path.GetFileName(file));
-                        System.IO.File.Copy(file, outputFile, true);
-                    }
+                    TranslatedFiles = files.Select(f => Path.GetFileName(f)).ToList();
+                    _logger.LogInformation($"Translated files: {string.Join(", ", TranslatedFiles)}");
+                }
+                else
+                {
+                    _logger.LogWarning($"Output folder {outputPath} does not exist");
                 }
             }
             catch (DocumentTranslationService.Core.DocumentTranslationService.CredentialsException ex)
@@ -274,6 +276,57 @@ namespace DocumentTranslation.Web.Pages
                 ".md" => "text/markdown",
                 _ => "application/octet-stream"
             };
+        }
+
+        private async Task CopyFileWithRetryAsync(string sourceFile, string destinationFile, int maxRetries = 5)
+        {
+            for (int retry = 0; retry < maxRetries; retry++)
+            {
+                try
+                {
+                    // Try using FileStream for better control over file access
+                    await CopyFileWithStreamAsync(sourceFile, destinationFile);
+                    return; // Success, exit the retry loop
+                }
+                catch (IOException ex)
+                {
+                    // Check if this is a file access/locking issue that might resolve with a retry
+                    bool isRetryableError = ex.Message.Contains("being used by another process") ||
+                                          ex.Message.Contains("cannot access the file") ||
+                                          ex.HResult == -2147024864 || // ERROR_SHARING_VIOLATION
+                                          ex.HResult == -2147024891;   // ERROR_ACCESS_DENIED
+                    
+                    if (!isRetryableError || retry == maxRetries - 1)
+                    {
+                        _logger.LogError($"Failed to copy file {sourceFile} after {maxRetries} retries: {ex.Message}");
+                        throw; // Re-throw on final attempt or non-retryable error
+                    }
+                    
+                    _logger.LogWarning($"File {sourceFile} is locked (attempt {retry + 1}/{maxRetries}), retrying in {(retry + 1) * 1000}ms. Error: {ex.Message}");
+                    await Task.Delay((retry + 1) * 1000); // Longer delays: 1s, 2s, 3s, 4s, 5s
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    if (retry == maxRetries - 1)
+                    {
+                        _logger.LogError($"Failed to copy file {sourceFile} after {maxRetries} retries due to access denied: {ex.Message}");
+                        throw;
+                    }
+                    
+                    _logger.LogWarning($"File {sourceFile} access denied (attempt {retry + 1}/{maxRetries}), retrying in {(retry + 1) * 1000}ms");
+                    await Task.Delay((retry + 1) * 1000);
+                }
+            }
+        }
+
+        private async Task CopyFileWithStreamAsync(string sourceFile, string destinationFile)
+        {
+            const int bufferSize = 1024 * 1024; // 1MB buffer
+            
+            using var sourceStream = new FileStream(sourceFile, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, FileOptions.SequentialScan);
+            using var destinationStream = new FileStream(destinationFile, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize, FileOptions.SequentialScan);
+            
+            await sourceStream.CopyToAsync(destinationStream);
         }
     }
 
