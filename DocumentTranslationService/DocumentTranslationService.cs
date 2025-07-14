@@ -3,6 +3,7 @@ using Azure.Storage.Blobs;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -170,21 +171,43 @@ namespace DocumentTranslationService.Core
             if (String.IsNullOrEmpty(AzureResourceName)) throw new CredentialsException("name");
             if (String.IsNullOrEmpty(SubscriptionKey)) throw new CredentialsException("key");
             if (String.IsNullOrEmpty(StorageConnectionString)) throw new CredentialsException("storage");
+            
             cancellationTokenSource = new();
             cancellationToken = cancellationTokenSource.Token;
             try
             {
+                // Log request details before submission
+                Console.WriteLine($"[DEBUG] Submitting translation request to: {AzureResourceName}");
+                Console.WriteLine($"[DEBUG] Using region: {AzureRegion}");
+                Console.WriteLine($"[DEBUG] Source URI: {input.Source.SourceUri}");
+                Console.WriteLine($"[DEBUG] Target count: {input.Targets?.Count ?? 0}");
+                if (input.Targets != null && input.Targets.Count > 0)
+                {
+                    foreach (var target in input.Targets)
+                    {
+                        Console.WriteLine($"[DEBUG] Target URI: {target.TargetUri}, Language: {target.LanguageCode}");
+                    }
+                }
+                
                 documentTranslationOperation = await documentTranslationClient.StartTranslationAsync(input, cancellationToken);
+                Console.WriteLine($"[DEBUG] Translation operation started successfully with ID: {documentTranslationOperation?.Id}");
             }
             catch (Azure.RequestFailedException ex)
             {
-                Debug.WriteLine("Request failed: " + ex.Source + ": " + ex.Message);
-                throw new Exception(ex.Message);
+                Console.WriteLine($"[ERROR] Azure Request Failed - Error Code: {ex.ErrorCode}, Status: {ex.Status}");
+                Console.WriteLine($"[ERROR] Message: {ex.Message}");
+                Console.WriteLine($"[ERROR] Source: {ex.Source}");
+                throw new Exception($"Azure Request Failed - Error Code: {ex.ErrorCode}, Status: {ex.Status}, Message: {ex.Message}");
             }
             catch (System.InvalidOperationException ex)
             {
-                Debug.WriteLine("Request failed: " + ex.Source + ": " + ex.Message);
-                throw new Exception(ex.Message);
+                Console.WriteLine($"[ERROR] Invalid Operation - Source: {ex.Source}, Message: {ex.Message}");
+                throw new Exception($"Invalid Operation - Source: {ex.Source}, Message: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Unexpected error during translation submission: {ex.GetType().Name} - {ex.Message}");
+                throw new Exception($"Unexpected error during translation submission: {ex.GetType().Name} - {ex.Message}");
             }
             await documentTranslationOperation.UpdateStatusAsync();
             Debug.WriteLine("Translation Request submitted. Status: " + documentTranslationOperation.Status);
