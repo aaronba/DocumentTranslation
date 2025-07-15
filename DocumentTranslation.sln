@@ -40,6 +40,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "images", "images", "{C0EB30
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DocumentTranslationService", "DocumentTranslationService\DocumentTranslationService.csproj", "{AABFD3BB-CC1E-4AA7-B792-72A1BC83A155}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DocumentTranslationService.Tests", "DocumentTranslationService.Tests\DocumentTranslationService.Tests.csproj", "{B8C7E2F1-3D45-4A86-B123-456789ABCDEF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -78,6 +80,14 @@ Global
 		{AABFD3BB-CC1E-4AA7-B792-72A1BC83A155}.Release|Any CPU.Build.0 = Release|Any CPU
 		{AABFD3BB-CC1E-4AA7-B792-72A1BC83A155}.Release|x86.ActiveCfg = Release|Any CPU
 		{AABFD3BB-CC1E-4AA7-B792-72A1BC83A155}.Release|x86.Build.0 = Release|Any CPU
+		{B8C7E2F1-3D45-4A86-B123-456789ABCDEF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B8C7E2F1-3D45-4A86-B123-456789ABCDEF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B8C7E2F1-3D45-4A86-B123-456789ABCDEF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B8C7E2F1-3D45-4A86-B123-456789ABCDEF}.Debug|x86.Build.0 = Debug|Any CPU
+		{B8C7E2F1-3D45-4A86-B123-456789ABCDEF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B8C7E2F1-3D45-4A86-B123-456789ABCDEF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B8C7E2F1-3D45-4A86-B123-456789ABCDEF}.Release|x86.ActiveCfg = Release|Any CPU
+		{B8C7E2F1-3D45-4A86-B123-456789ABCDEF}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

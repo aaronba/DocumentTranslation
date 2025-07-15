@@ -50,7 +50,9 @@ namespace DocumentTranslationService.Core
                         ConnectionStrings = new Connectionstrings(),
                         AzureRegion = "global",
                         TextTransEndpoint = "https://api.cognitive.microsofttranslator.com/",
-                        AzureResourceName = "https://*.cognitiveservices.azure.com/"
+                        AzureResourceName = "https://*.cognitiveservices.azure.com/",
+                        UseOAuth2Authentication = false,
+                        OAuth2 = new OAuth2Settings()
                     };
                     settings.ConnectionStrings.StorageConnectionString = "DefaultEndpointsProtocol=https;AccountName=*";
                     return settings;
@@ -119,6 +121,16 @@ namespace DocumentTranslationService.Core
         /// <exception cref="ArgumentException"/>
         public static void CheckSettings(DocTransAppSettings settings, bool textOnly = false)
         {
+            // If OAuth2 is enabled, validate OAuth2 settings first
+            if (settings.UsingOAuth2)
+            {
+                if (string.IsNullOrEmpty(settings.OAuth2.ClientId)) throw new ArgumentException("OAuth2 ClientId is required when OAuth2 authentication is enabled");
+                if (string.IsNullOrEmpty(settings.OAuth2.TenantId)) throw new ArgumentException("OAuth2 TenantId is required when OAuth2 authentication is enabled");
+                // OAuth2 authentication can be used instead of traditional authentication
+                return;
+            }
+
+            // Traditional authentication validation
             if (string.IsNullOrEmpty(settings.SubscriptionKey)) throw new ArgumentException("SubscriptionKey");
             if (string.IsNullOrEmpty(settings.AzureRegion)) throw new ArgumentException("AzureRegion");
             if (!textOnly)

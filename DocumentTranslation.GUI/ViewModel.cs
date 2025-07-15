@@ -36,6 +36,8 @@ namespace DocumentTranslation.GUI
         public event EventHandler OnLanguagesUpdate;
         public event EventHandler OnKeyVaultAuthenticationStart;
         public event EventHandler OnKeyVaultAuthenticationComplete;
+        public event EventHandler OnOAuth2AuthenticationStart;
+        public event EventHandler OnOAuth2AuthenticationComplete;
         public event EventHandler<string> OnLanguagesFailed;
 
         internal DocumentTranslationService.Core.DocumentTranslationService documentTranslationService = new();
@@ -83,6 +85,33 @@ namespace DocumentTranslation.GUI
                 }
                 Debug.WriteLine($"Authentication Complete {localSettings.AzureKeyVaultName}");
                 if (!IsTest) OnKeyVaultAuthenticationComplete?.Invoke(this, EventArgs.Empty);
+            }
+            
+            // OAuth2 Authentication (if enabled)
+            if (localSettings.UsingOAuth2)
+            {
+                Debug.WriteLine($"Start OAuth2 authentication for tenant {localSettings.OAuth2.TenantId}");
+                if (!IsTest) OnOAuth2AuthenticationStart?.Invoke(this, EventArgs.Empty);
+                
+                try
+                {
+                    var oauth2Auth = new OAuth2Authentication(localSettings.OAuth2);
+                    string accessToken = await oauth2Auth.AuthenticateInteractiveAsync();
+                    Debug.WriteLine($"OAuth2 authentication successful, token expires: {oauth2Auth.GetCurrentUser()?.ExpiresOn}");
+                    
+                    // OAuth2 authentication successful - tokens will be managed automatically
+                    if (!IsTest) OnOAuth2AuthenticationComplete?.Invoke(this, EventArgs.Empty);
+                }
+                catch (OAuth2AuthenticationException ex)
+                {
+                    Debug.WriteLine($"OAuth2 authentication failed: {ex.Message}");
+                    throw new ArgumentException($"OAuth2 authentication failed: {ex.Message}");
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"OAuth2 unexpected error: {ex.Message}");
+                    throw new ArgumentException($"OAuth2 authentication error: {ex.Message}");
+                }
             }
             else
             {

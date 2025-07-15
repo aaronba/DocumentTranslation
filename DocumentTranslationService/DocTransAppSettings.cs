@@ -69,6 +69,26 @@ namespace DocumentTranslationService.Core
         /// Proxy server address
         /// </summary>
         public string ProxyAddress { get; set; }
+
+        /// <summary>
+        /// OAuth2 authentication settings for Azure Government Entra ID
+        /// </summary>
+        public OAuth2Settings OAuth2 { get; set; }
+
+        /// <summary>
+        /// Whether to use OAuth2 authentication instead of or in addition to other authentication methods
+        /// </summary>
+        public bool UseOAuth2Authentication { get; set; }
+
+        public bool UsingOAuth2
+        {
+            get
+            {
+                return UseOAuth2Authentication && OAuth2 != null && 
+                       !string.IsNullOrEmpty(OAuth2.ClientId?.Trim()) && 
+                       !string.IsNullOrEmpty(OAuth2.TenantId?.Trim());
+            }
+        }
     }
 
     public class Connectionstrings

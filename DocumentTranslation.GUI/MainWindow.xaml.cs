@@ -30,6 +30,8 @@ namespace DocumentTranslation.GUI
             viewModel.OnLanguagesUpdate += ViewModel_OnLanguagesUpdate;
             viewModel.OnKeyVaultAuthenticationStart += ViewModel_OnKeyVaultAuthenticationStart;
             viewModel.OnKeyVaultAuthenticationComplete += ViewModel_OnKeyVaultAuthenticationComplete;
+            viewModel.OnOAuth2AuthenticationStart += ViewModel_OnOAuth2AuthenticationStart;
+            viewModel.OnOAuth2AuthenticationComplete += ViewModel_OnOAuth2AuthenticationComplete;
             AppSettingsSetter.SettingsReadComplete += AppSettingsSetter_SettingsReadComplete;
             ViewModel = viewModel;
             toLanguageBox.ItemsSource = ViewModel.ToLanguageList;
@@ -50,6 +52,17 @@ namespace DocumentTranslation.GUI
         {
             if (ViewModel.Settings.UsingKeyVault) TranslateDocumentsTab.IsSelected = true;
             StatusBarSText1.Text = Properties.Resources.msg_SignInComplete;
+        }
+
+        private void ViewModel_OnOAuth2AuthenticationStart(object sender, EventArgs e)
+        {
+            StatusBarSText1.Text = "Authenticating with Azure Government...";
+        }
+
+        private void ViewModel_OnOAuth2AuthenticationComplete(object sender, EventArgs e)
+        {
+            if (ViewModel.Settings.UsingOAuth2) TranslateDocumentsTab.IsSelected = true;
+            StatusBarSText1.Text = "OAuth2 authentication complete";
         }
 
         private void ViewModel_OnLanguagesUpdate(object sender, EventArgs e)
