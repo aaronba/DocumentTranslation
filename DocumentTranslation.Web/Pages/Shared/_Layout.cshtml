@@ -8,6 +8,9 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/DocumentTranslation.Web.styles.css" asp-append-version="true" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    
+    <!-- MSAL.js library for Azure AD authentication -->
+    <script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js" integrity="sha384-NuYJmp5hF5nBj8/SSDiJ1VRGqhw1PfUOGPX4I0pJBJwZ4LV6H6U8L1j7UWLnhG3r" crossorigin="anonymous"></script>
 </head>
 <body>
     <header>
@@ -39,6 +42,28 @@
                             </a>
                         </li>
                     </ul>
+                    
+                    <!-- Authentication section -->
+                    <ul class="navbar-nav">
+                        <li class="nav-item" id="auth-section">
+                            <!-- Authentication UI will be inserted here by JavaScript -->
+                            <button class="btn btn-outline-light" id="sign-in-button" style="display: none;">
+                                <i class="fas fa-sign-in-alt"></i> Sign In
+                            </button>
+                            <div class="dropdown" id="user-menu" style="display: none;">
+                                <button class="btn btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-user"></i> <span id="user-name">User</span>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><h6 class="dropdown-header" id="user-email">user@domain.com</h6></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><button class="dropdown-item" id="sign-out-button">
+                                        <i class="fas fa-sign-out-alt"></i> Sign Out
+                                    </button></li>
+                                </ul>
+                            </div>
+                        </li>
+                    </ul>
                 </div>
             </div>
         </nav>
@@ -57,8 +82,96 @@
 
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/auth.js" asp-append-version="true"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
 
     @await RenderSectionAsync("Scripts", required: false)
+    
+    <!-- Authentication initialization script -->
+    <script>
+        // Initialize authentication when page loads
+        document.addEventListener('DOMContentLoaded', async function() {
+            try {
+                // Load authentication configuration from server
+                const configResponse = await fetch('/api/config/auth');
+                if (!configResponse.ok) {
+                    console.warn('[Auth] Failed to load auth configuration');
+                    return;
+                }
+                
+                const authConfig = await configResponse.json();
+                
+                // Show/hide auth elements based on configuration
+                const signInButton = document.getElementById('sign-in-button');
+                const userMenu = document.getElementById('user-menu');
+                const signOutButton = document.getElementById('sign-out-button');
+
+                if (!authConfig.isConfigured || !authConfig.clientId) {
+                    console.warn('[Auth] Client ID not configured, authentication disabled');
+                    return;
+                }
+
+                // Initialize auth service
+                await window.authService.initialize(authConfig.clientId, authConfig.tenantId);
+
+                // Set up authentication state management
+                window.authService.onAuthStateChanged(function(state) {
+                    if (state.isAuthenticated) {
+                        signInButton.style.display = 'none';
+                        userMenu.style.display = 'block';
+                        
+                        if (state.account) {
+                            document.getElementById('user-name').textContent = 
+                                state.account.name || state.account.username || 'User';
+                        }
+                    } else {
+                        signInButton.style.display = 'block';
+                        userMenu.style.display = 'none';
+                    }
+                });
+
+                // Set up user info display
+                window.authService.onUserInfoChanged(function(userInfo) {
+                    if (userInfo) {
+                        document.getElementById('user-name').textContent = 
+                            userInfo.displayName || userInfo.userPrincipalName || 'User';
+                        document.getElementById('user-email').textContent = 
+                            userInfo.userPrincipalName || userInfo.mail || '';
+                    }
+                });
+
+                // Set up event handlers
+                signInButton.addEventListener('click', function() {
+                    window.authService.signIn().catch(function(error) {
+                        console.error('Sign-in failed:', error);
+                        alert('Sign-in failed. Please try again.');
+                    });
+                });
+
+                signOutButton.addEventListener('click', function() {
+                    window.authService.signOut().catch(function(error) {
+                        console.error('Sign-out failed:', error);
+                        alert('Sign-out failed. Please try again.');
+                    });
+                });
+
+                // Initial auth state check
+                const currentState = window.authService.getAuthState();
+                if (currentState.isAuthenticated) {
+                    signInButton.style.display = 'none';
+                    userMenu.style.display = 'block';
+                } else {
+                    signInButton.style.display = 'block';
+                    userMenu.style.display = 'none';
+                }
+
+                console.log('[Auth] Authentication service initialized successfully');
+            } catch (error) {
+                console.error('[Auth] Failed to initialize authentication:', error);
+                // Show sign-in button in case of error
+                document.getElementById('sign-in-button').style.display = 'block';
+            }
+        });
+    </script>
 </body>
 </html>

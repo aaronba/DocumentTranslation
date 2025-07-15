@@ -1,13 +1,27 @@
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.IIS;
+using Microsoft.Identity.Web;
+using Microsoft.Identity.Web.UI;
 using DocumentTranslation.Web.Models;
 using DocumentTranslationService.Core;
 using DocumentTranslation.Web.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Add Azure AD authentication
+builder.Services.AddAuthentication("AzureAD")
+    .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"), "AzureAD");
+
 // Add services to the container.
-builder.Services.AddRazorPages();
+builder.Services.AddRazorPages(options =>
+{
+    // Configure authorization policies
+    options.Conventions.AuthorizeFolder("/");
+    options.Conventions.AllowAnonymousToPage("/Index");
+    options.Conventions.AllowAnonymousToPage("/Privacy");
+    options.Conventions.AllowAnonymousToPage("/Error");
+}).AddMicrosoftIdentityUI();
+
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
 
@@ -73,6 +87,7 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapRazorPages();

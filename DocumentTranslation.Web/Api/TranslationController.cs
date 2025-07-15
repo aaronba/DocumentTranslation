@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.Authorization;
 using DocumentTranslation.Web.Hubs;
 using DocumentTranslationService.Core;
 
@@ -7,6 +8,7 @@ namespace DocumentTranslation.Web.Api
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class TranslationController : ControllerBase
     {
         private readonly ILogger<TranslationController> _logger;
