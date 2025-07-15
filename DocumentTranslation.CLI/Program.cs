@@ -175,11 +175,31 @@ namespace DocumentTranslation.CLI
                     var textEndpoint = configSetCmd.Option("--textendpoint <TextEndpoint>", "URL of the Text Translation API endpoint. 'clear' to remove.", CommandOptionType.SingleValue);
                     var region = configSetCmd.Option("--region <Region>", "Region where the Translator resource is located.", CommandOptionType.SingleValue);
                     var cat = configSetCmd.Option("--category", "Set the Custom Translator category to use for translations. 'clear' to remove.", CommandOptionType.SingleValue);
+                    
+                    // OAuth2 options
+                    var oauth2Enable = configSetCmd.Option("--oauth2", "Enable OAuth2 authentication for Azure Government Entra ID. Use with 'true' or 'false'.", CommandOptionType.SingleValue);
+                    var oauth2ClientId = configSetCmd.Option("--oauth2-client-id", "Azure AD application (client) ID for OAuth2 authentication. 'clear' to remove.", CommandOptionType.SingleValue);
+                    var oauth2TenantId = configSetCmd.Option("--oauth2-tenant-id", "Azure AD tenant (directory) ID for OAuth2 authentication. 'clear' to remove.", CommandOptionType.SingleValue);
+                    var oauth2Cloud = configSetCmd.Option("--oauth2-cloud", "Azure cloud environment (AzureGovernment, AzureChina, AzurePublic). Default: AzureGovernment.", CommandOptionType.SingleValue);
+                    
                     configSetCmd.Description = "Set the values of configuration parameters. Required before using Document Translation.";
                     configSetCmd.OnExecute(() =>
                     {
-                        if (!(key.HasValue() || storage.HasValue() || endpoint.HasValue() || textEndpoint.HasValue() || region.HasValue() || cat.HasValue())) configSetCmd.ShowHelp();
+                        if (!(key.HasValue() || storage.HasValue() || endpoint.HasValue() || textEndpoint.HasValue() || region.HasValue() || cat.HasValue() || 
+                              oauth2Enable.HasValue() || oauth2ClientId.HasValue() || oauth2TenantId.HasValue() || oauth2Cloud.HasValue())) 
+                        {
+                            configSetCmd.ShowHelp();
+                            return 1;
+                        }
+                        
                         DocTransAppSettings docTransAppSettings = AppSettingsSetter.Read(null);
+                        
+                        // Initialize OAuth2 settings if they don't exist
+                        if (docTransAppSettings.OAuth2 == null)
+                        {
+                            docTransAppSettings.OAuth2 = new OAuth2Settings();
+                        }
+                        
                         if (key.HasValue())
                         {
                             if (key.Value().ToLowerInvariant() == "clear") docTransAppSettings.SubscriptionKey = string.Empty;
@@ -220,6 +240,55 @@ namespace DocumentTranslation.CLI
                             else docTransAppSettings.AzureRegion = region.Value();
                             Console.WriteLine($"{app.Name}: Azure region set.");
                         }
+                        
+                        // OAuth2 configuration
+                        if (oauth2Enable.HasValue())
+                        {
+                            if (bool.TryParse(oauth2Enable.Value(), out bool enableOAuth2))
+                            {
+                                docTransAppSettings.UseOAuth2Authentication = enableOAuth2;
+                                Console.WriteLine($"{app.Name}: OAuth2 authentication {(enableOAuth2 ? "enabled" : "disabled")}.");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"ERROR: Invalid value for --oauth2. Use 'true' or 'false'.");
+                                return 1;
+                            }
+                        }
+                        
+                        if (oauth2ClientId.HasValue())
+                        {
+                            if (oauth2ClientId.Value().ToLowerInvariant() == "clear") docTransAppSettings.OAuth2.ClientId = string.Empty;
+                            else docTransAppSettings.OAuth2.ClientId = oauth2ClientId.Value();
+                            Console.WriteLine($"{app.Name}: OAuth2 Client ID set.");
+                        }
+                        
+                        if (oauth2TenantId.HasValue())
+                        {
+                            if (oauth2TenantId.Value().ToLowerInvariant() == "clear") docTransAppSettings.OAuth2.TenantId = string.Empty;
+                            else docTransAppSettings.OAuth2.TenantId = oauth2TenantId.Value();
+                            Console.WriteLine($"{app.Name}: OAuth2 Tenant ID set.");
+                        }
+                        
+                        if (oauth2Cloud.HasValue())
+                        {
+                            var cloudEnv = oauth2Cloud.Value();
+                            if (cloudEnv.ToLowerInvariant() == "clear") 
+                            {
+                                docTransAppSettings.OAuth2.CloudEnvironment = "AzureGovernment"; // Default
+                            }
+                            else if (cloudEnv.ToLowerInvariant() is "azuregovernment" or "government" or "gov" or 
+                                     "azurechina" or "china" or "azurepublic" or "public" or "commercial")
+                            {
+                                docTransAppSettings.OAuth2.CloudEnvironment = cloudEnv;
+                                Console.WriteLine($"{app.Name}: OAuth2 cloud environment set to {cloudEnv}.");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"ERROR: Invalid cloud environment. Use AzureGovernment, AzureChina, or AzurePublic.");
+                                return 1;
+                            }
+                        }
                         AppSettingsSetter.Write(null, docTransAppSettings);
                         return 0;
                     });
@@ -243,6 +312,133 @@ namespace DocumentTranslation.CLI
                 configCmd.OnExecute(() =>
                 {
                     configCmd.ShowHelp();
+                    return 1;
+                });
+            });
+            app.Command("oauth2", oauth2Cmd =>
+            {
+                oauth2Cmd.Description = "OAuth2 authentication operations for Azure Government Entra ID.";
+                
+                oauth2Cmd.Command("login", oauth2LoginCmd =>
+                {
+                    oauth2LoginCmd.Description = "Authenticate using OAuth2 and test the connection.";
+                    oauth2LoginCmd.OnExecuteAsync(async (cancellationToken) =>
+                    {
+                        try
+                        {
+                            DocTransAppSettings settings = AppSettingsSetter.Read();
+                            
+                            if (!settings.UsingOAuth2)
+                            {
+                                Console.WriteLine("ERROR: OAuth2 authentication is not configured. Use 'doctr config set --oauth2 true --oauth2-client-id <id> --oauth2-tenant-id <id>' to configure.");
+                                return 1;
+                            }
+
+                            Console.WriteLine("Starting OAuth2 authentication...");
+                            var oauth2Auth = new OAuth2Authentication(settings.OAuth2);
+                            
+                            string accessToken = await oauth2Auth.AuthenticateInteractiveAsync();
+                            var userInfo = oauth2Auth.GetCurrentUser();
+                            
+                            Console.WriteLine($"✓ OAuth2 authentication successful!");
+                            Console.WriteLine($"  User: {userInfo?.Username}");
+                            Console.WriteLine($"  Tenant: {userInfo?.TenantId}");
+                            Console.WriteLine($"  Token expires: {userInfo?.ExpiresOn:yyyy-MM-dd HH:mm:ss} UTC");
+                            Console.WriteLine($"  Cloud: {settings.OAuth2.CloudEnvironment}");
+                            
+                            // Test the token by attempting to create a credential
+                            try
+                            {
+                                var credential = OAuth2ServiceClientFactory.CreateCredential(settings);
+                                Console.WriteLine("✓ OAuth2 credential provider created successfully.");
+                                return 0;
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"WARNING: OAuth2 authentication succeeded but credential creation failed: {ex.Message}");
+                                return 1;
+                            }
+                        }
+                        catch (OAuth2AuthenticationException ex)
+                        {
+                            Console.WriteLine($"ERROR: OAuth2 authentication failed: {ex.Message}");
+                            return 1;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"ERROR: Unexpected error during OAuth2 authentication: {ex.Message}");
+                            return 1;
+                        }
+                    });
+                });
+                
+                oauth2Cmd.Command("logout", oauth2LogoutCmd =>
+                {
+                    oauth2LogoutCmd.Description = "Sign out from OAuth2 authentication.";
+                    oauth2LogoutCmd.OnExecuteAsync(async (cancellationToken) =>
+                    {
+                        try
+                        {
+                            DocTransAppSettings settings = AppSettingsSetter.Read();
+                            
+                            if (!settings.UsingOAuth2)
+                            {
+                                Console.WriteLine("OAuth2 authentication is not configured.");
+                                return 0;
+                            }
+
+                            var oauth2Auth = new OAuth2Authentication(settings.OAuth2);
+                            await oauth2Auth.SignOutAsync();
+                            Console.WriteLine("✓ Successfully signed out from OAuth2.");
+                            return 0;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"ERROR: Failed to sign out: {ex.Message}");
+                            return 1;
+                        }
+                    });
+                });
+                
+                oauth2Cmd.Command("status", oauth2StatusCmd =>
+                {
+                    oauth2StatusCmd.Description = "Show OAuth2 authentication status.";
+                    oauth2StatusCmd.OnExecute(() =>
+                    {
+                        try
+                        {
+                            DocTransAppSettings settings = AppSettingsSetter.Read();
+                            
+                            Console.WriteLine($"OAuth2 Authentication Status:");
+                            Console.WriteLine($"  Enabled: {settings.UseOAuth2Authentication}");
+                            Console.WriteLine($"  Configured: {settings.UsingOAuth2}");
+                            
+                            if (settings.OAuth2 != null)
+                            {
+                                Console.WriteLine($"  Client ID: {(string.IsNullOrEmpty(settings.OAuth2.ClientId) ? "Not set" : "Set")}");
+                                Console.WriteLine($"  Tenant ID: {(string.IsNullOrEmpty(settings.OAuth2.TenantId) ? "Not set" : "Set")}");
+                                Console.WriteLine($"  Cloud Environment: {settings.OAuth2.CloudEnvironment}");
+                                Console.WriteLine($"  Redirect URI: {settings.OAuth2.RedirectUri}");
+                                Console.WriteLine($"  Scopes: [{string.Join(", ", settings.OAuth2.Scopes)}]");
+                            }
+                            else
+                            {
+                                Console.WriteLine("  OAuth2 settings: Not configured");
+                            }
+                            
+                            return 0;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"ERROR: Failed to read OAuth2 status: {ex.Message}");
+                            return 1;
+                        }
+                    });
+                });
+                
+                oauth2Cmd.OnExecute(() =>
+                {
+                    oauth2Cmd.ShowHelp();
                     return 1;
                 });
             });

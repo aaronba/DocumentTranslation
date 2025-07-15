@@ -17,7 +17,11 @@ you may have built with [Custom Translator](http://customtranslator.ai).
 You can manage the credentials for accessing the Azure services in Azure Key Vault - the app will read it from there,
 based on your identity. Good if you want to manage the credentials centrally.
 
-Works with Azure sovereign clouds. 
+**NEW: OAuth2 Authentication Support**
+
+The application now supports OAuth2 authentication using Azure Government Entra ID (Azure Active Directory). This provides enhanced security and modern authentication flows for Azure Government environments. See the [OAuth2 Setup Guide](docs/OAuth2-AzureGovernment-Setup.md) for detailed configuration instructions.
+
+Works with Azure sovereign clouds, including Azure Government, Azure China, and Azure Public. 
 
 **Document Translation  UI**
 
