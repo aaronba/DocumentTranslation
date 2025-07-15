@@ -19,7 +19,24 @@ based on your identity. Good if you want to manage the credentials centrally.
 
 **NEW: OAuth2 Authentication Support**
 
-The application now supports OAuth2 authentication using Azure Government Entra ID (Azure Active Directory). This provides enhanced security and modern authentication flows for Azure Government environments. See the [OAuth2 Setup Guide](docs/OAuth2-AzureGovernment-Setup.md) for detailed configuration instructions.
+The application now supports OAuth2 authentication using Azure Government Entra ID (Azure Active Directory). This provides enhanced security and modern authentication flows for Azure Government environments.
+
+**Quick Start for OAuth2:**
+```bash
+# Configure OAuth2 for Azure Government
+doctr config set --oauth2 true --oauth2-client-id "your-client-id" --oauth2-tenant-id "your-tenant-id"
+
+# Authenticate
+doctr oauth2 login
+
+# Check status
+doctr oauth2 status
+
+# Use document translation with OAuth2
+doctr translate -f document.pdf -t output/ --to es
+```
+
+See the [OAuth2 Setup Guide](docs/OAuth2-AzureGovernment-Setup.md) for detailed configuration instructions.
 
 Works with Azure sovereign clouds, including Azure Government, Azure China, and Azure Public. 
 
