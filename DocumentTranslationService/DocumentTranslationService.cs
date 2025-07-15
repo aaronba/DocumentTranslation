@@ -72,7 +72,17 @@ namespace DocumentTranslationService.Core
         /// <summary>
         /// The base URL template for making translation requests.
         /// </summary>
-        private const string baseUriTemplate = ".cognitiveservices.azure.com/";
+        private string GetBaseUriTemplate()
+        {
+            // Check if we're using Azure Government based on existing configuration
+            if (!string.IsNullOrEmpty(TextTransUri) && TextTransUri.Contains(".azure.us"))
+                return ".cognitiveservices.azure.us/";
+            if (!string.IsNullOrEmpty(AzureResourceName) && AzureResourceName.Contains(".azure.us"))
+                return ".cognitiveservices.azure.us/";
+            
+            // Default to public Azure
+            return ".cognitiveservices.azure.com/";
+        }
         #endregion Constants
         #region Methods
 
@@ -105,12 +115,21 @@ namespace DocumentTranslationService.Core
             if (string.IsNullOrEmpty(AzureResourceName)) throw new CredentialsException("name");
             if (string.IsNullOrEmpty(SubscriptionKey)) throw new CredentialsException("key");
             if (string.IsNullOrEmpty(TextTransUri)) TextTransUri = "https://api.cognitive.microsofttranslator.com/";
+            
+            string baseUriTemplate = GetBaseUriTemplate();
             string DocTransEndpoint;
             if (!AzureResourceName.Contains('.')) DocTransEndpoint = "https://" + AzureResourceName + baseUriTemplate;
             else DocTransEndpoint = AzureResourceName;
+            
+            // Add debug logging
+            Console.WriteLine($"[DEBUG] InitializeAsync - AzureResourceName: {AzureResourceName}");
+            Console.WriteLine($"[DEBUG] InitializeAsync - DocTransEndpoint: {DocTransEndpoint}");
+            Console.WriteLine($"[DEBUG] InitializeAsync - baseUriTemplate: {baseUriTemplate}");
+            
             var options = new DocumentTranslationClientOptions();
             if (!string.IsNullOrEmpty(FlightString)) options.AddPolicy(new FlightPolicy(FlightString.Trim()), Azure.Core.HttpPipelinePosition.PerCall);
             documentTranslationClient = new(new Uri(DocTransEndpoint), new Azure.AzureKeyCredential(SubscriptionKey), options);
+            
             List<Task> tasks = new()
             {
                 GetDocumentFormatsAsync(),

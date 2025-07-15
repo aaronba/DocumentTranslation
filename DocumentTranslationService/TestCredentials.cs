@@ -53,6 +53,7 @@ namespace DocumentTranslationService.Core
 
         private async Task TryCredentialsName()
         {
+            string baseUriTemplate = GetBaseUriTemplate();
             string DocTransEndpoint;
             if (!AzureResourceName.Contains('.')) DocTransEndpoint = "https://" + AzureResourceName + baseUriTemplate;
             else DocTransEndpoint = AzureResourceName;
@@ -100,6 +101,7 @@ namespace DocumentTranslationService.Core
 
         private async Task TryPaidSubscription()
         {
+            string baseUriTemplate = GetBaseUriTemplate();
             string DocTransEndpoint;
             if (!AzureResourceName.Contains('.')) DocTransEndpoint = "https://" + AzureResourceName + baseUriTemplate;
             else DocTransEndpoint = AzureResourceName;

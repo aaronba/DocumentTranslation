@@ -2,11 +2,14 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.IIS;
 using DocumentTranslation.Web.Models;
 using DocumentTranslationService.Core;
+using DocumentTranslation.Web.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorPages();
+builder.Services.AddControllers();
+builder.Services.AddSignalR();
 
 // Configure DocumentTranslation settings
 builder.Services.Configure<DocumentTranslationOptions>(
@@ -16,6 +19,14 @@ builder.Services.Configure<DocumentTranslationOptions>(
 builder.Services.AddSingleton<DocumentTranslationService.Core.DocumentTranslationService>(serviceProvider =>
 {
     var options = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<DocumentTranslationOptions>>().Value;
+    
+    // Add debug logging to see what values we're getting
+    Console.WriteLine($"[DEBUG] AzureResourceName: {options.AzureResourceName}");
+    Console.WriteLine($"[DEBUG] SubscriptionKey: {(string.IsNullOrEmpty(options.SubscriptionKey) ? "EMPTY" : "***SET***")}");
+    Console.WriteLine($"[DEBUG] AzureRegion: {options.AzureRegion}");
+    Console.WriteLine($"[DEBUG] TextTransEndpoint: {options.TextTransEndpoint}");
+    Console.WriteLine($"[DEBUG] StorageConnectionString: {(string.IsNullOrEmpty(options.ConnectionStrings.StorageConnectionString) ? "EMPTY" : "***SET***")}");
+    
     return new DocumentTranslationService.Core.DocumentTranslationService(
         options.SubscriptionKey,
         options.AzureResourceName,
@@ -65,6 +76,8 @@ app.UseRouting();
 app.UseAuthorization();
 
 app.MapRazorPages();
+app.MapControllers();
+app.MapHub<TranslationProgressHub>("/translationProgressHub");
 
 app.Run();
 
