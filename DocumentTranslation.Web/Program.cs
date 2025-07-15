@@ -8,19 +8,31 @@ using DocumentTranslation.Web.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add Azure AD authentication
-builder.Services.AddAuthentication("AzureAD")
-    .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"), "AzureAD");
+// Check if Azure AD is configured
+var azureAdClientId = builder.Configuration["AzureAd:ClientId"];
+var isAuthenticationConfigured = !string.IsNullOrEmpty(azureAdClientId);
+
+// Add Azure AD authentication only if configured
+if (isAuthenticationConfigured)
+{
+    builder.Services.AddAuthentication("AzureAD")
+        .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"), "AzureAD");
+}
 
 // Add services to the container.
-builder.Services.AddRazorPages(options =>
+var razorPagesBuilder = builder.Services.AddRazorPages();
+
+if (isAuthenticationConfigured)
 {
-    // Configure authorization policies
-    options.Conventions.AuthorizeFolder("/");
-    options.Conventions.AllowAnonymousToPage("/Index");
-    options.Conventions.AllowAnonymousToPage("/Privacy");
-    options.Conventions.AllowAnonymousToPage("/Error");
-}).AddMicrosoftIdentityUI();
+    razorPagesBuilder.AddRazorPagesOptions(options =>
+    {
+        // Configure authorization policies only when authentication is enabled
+        options.Conventions.AuthorizeFolder("/");
+        options.Conventions.AllowAnonymousToPage("/Index");
+        options.Conventions.AllowAnonymousToPage("/Privacy");
+        options.Conventions.AllowAnonymousToPage("/Error");
+    }).AddMicrosoftIdentityUI();
+}
 
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
@@ -87,7 +99,11 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
-app.UseAuthentication();
+// Add authentication middleware only if configured
+if (isAuthenticationConfigured)
+{
+    app.UseAuthentication();
+}
 app.UseAuthorization();
 
 app.MapRazorPages();
