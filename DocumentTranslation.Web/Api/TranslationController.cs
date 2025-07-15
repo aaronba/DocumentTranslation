@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.Authorization;
 using DocumentTranslation.Web.Hubs;
 using DocumentTranslationService.Core;
 
@@ -13,17 +14,20 @@ namespace DocumentTranslation.Web.Api
         private readonly IWebHostEnvironment _environment;
         private readonly DocumentTranslationService.Core.DocumentTranslationService _translationService;
         private readonly IHubContext<TranslationProgressHub> _hubContext;
+        private readonly IConfiguration _configuration;
 
         public TranslationController(
             ILogger<TranslationController> logger,
             IWebHostEnvironment environment,
             DocumentTranslationService.Core.DocumentTranslationService translationService,
-            IHubContext<TranslationProgressHub> hubContext)
+            IHubContext<TranslationProgressHub> hubContext,
+            IConfiguration configuration)
         {
             _logger = logger;
             _environment = environment;
             _translationService = translationService;
             _hubContext = hubContext;
+            _configuration = configuration;
         }
 
         [HttpPost("translate")]
@@ -33,6 +37,14 @@ namespace DocumentTranslation.Web.Api
             [FromForm] string? sourceLanguage = null,
             [FromForm] string? connectionId = null)
         {
+            // Check if authentication is required and user is authenticated
+            var azureAdClientId = _configuration["AzureAd:ClientId"];
+            var isAuthenticationConfigured = !string.IsNullOrEmpty(azureAdClientId);
+            
+            if (isAuthenticationConfigured && (User.Identity?.IsAuthenticated != true))
+            {
+                return Unauthorized("Authentication required. Please sign in to access this feature.");
+            }
             // Debug logging to see what we're actually receiving
             _logger.LogInformation("TranslateAsync called with:");
             _logger.LogInformation("- file: {FileName} ({FileSize} bytes)", file?.FileName ?? "null", file?.Length ?? 0);

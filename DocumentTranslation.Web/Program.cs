@@ -1,13 +1,39 @@
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.IIS;
+using Microsoft.Identity.Web;
+using Microsoft.Identity.Web.UI;
 using DocumentTranslation.Web.Models;
 using DocumentTranslationService.Core;
 using DocumentTranslation.Web.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Check if Azure AD is configured
+var azureAdClientId = builder.Configuration["AzureAd:ClientId"];
+var isAuthenticationConfigured = !string.IsNullOrEmpty(azureAdClientId);
+
+// Add Azure AD authentication only if configured
+if (isAuthenticationConfigured)
+{
+    builder.Services.AddAuthentication("AzureAD")
+        .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"), "AzureAD");
+}
+
 // Add services to the container.
-builder.Services.AddRazorPages();
+var razorPagesBuilder = builder.Services.AddRazorPages();
+
+if (isAuthenticationConfigured)
+{
+    razorPagesBuilder.AddRazorPagesOptions(options =>
+    {
+        // Configure authorization policies only when authentication is enabled
+        options.Conventions.AuthorizeFolder("/");
+        options.Conventions.AllowAnonymousToPage("/Index");
+        options.Conventions.AllowAnonymousToPage("/Privacy");
+        options.Conventions.AllowAnonymousToPage("/Error");
+    }).AddMicrosoftIdentityUI();
+}
+
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
 
@@ -73,6 +99,11 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
+// Add authentication middleware only if configured
+if (isAuthenticationConfigured)
+{
+    app.UseAuthentication();
+}
 app.UseAuthorization();
 
 app.MapRazorPages();

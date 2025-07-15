@@ -12,8 +12,14 @@
         </h1>
         <p class="lead">Translate your documents quickly and easily using Azure Translator services.</p>
         <hr class="my-4 bg-white">
+        <div id="auth-message" style="display: none;">
+            <div class="alert alert-info mb-3" role="alert">
+                <i class="fas fa-info-circle"></i>
+                <strong>Authentication Required:</strong> Please sign in to access document translation features.
+            </div>
+        </div>
         <p>Upload your documents and translate them into multiple languages with just a few clicks.</p>
-        <a class="btn btn-light btn-lg" asp-page="/Translate" role="button">
+        <a class="btn btn-light btn-lg" asp-page="/Translate" role="button" id="translate-button">
             <i class="fas fa-upload"></i>
             Start Translating
         </a>
@@ -92,3 +98,36 @@
         </div>
     </div>
 </div>
+
+@section Scripts {
+    <script>
+        // Handle authentication state on index page
+        document.addEventListener('DOMContentLoaded', function() {
+            // Wait a bit for auth service to initialize
+            setTimeout(function() {
+                const authMessage = document.getElementById('auth-message');
+                const translateButton = document.getElementById('translate-button');
+                
+                if (window.authService) {
+                    // Set up authentication state listener
+                    window.authService.onAuthStateChanged(function(state) {
+                        if (!state.isAuthenticated) {
+                            authMessage.style.display = 'block';
+                        } else {
+                            authMessage.style.display = 'none';
+                        }
+                    });
+                    
+                    // Check initial state
+                    const currentState = window.authService.getAuthState();
+                    if (!currentState.isAuthenticated) {
+                        authMessage.style.display = 'block';
+                    }
+                } else {
+                    // Auth service not available, might be not configured
+                    console.log('Auth service not available');
+                }
+            }, 1000);
+        });
+    </script>
+}

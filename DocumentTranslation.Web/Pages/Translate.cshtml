@@ -417,6 +417,16 @@
                 return;
             }
             
+            // Check authentication state
+            const authState = window.authService ? window.authService.getAuthState() : null;
+            if (!authState || !authState.isAuthenticated) {
+                showError('You must be signed in to translate documents. Please sign in and try again.');
+                if (window.authService) {
+                    window.authService.signIn();
+                }
+                return;
+            }
+            
             // Create FormData manually with the correct values
             const formData = new FormData();
             
@@ -451,13 +461,38 @@
                     formData.append('connectionId', connectionId);
                 }
 
+                // Get access token for authentication
+                let accessToken = null;
+                try {
+                    if (window.authService && window.authService.isAuthenticated) {
+                        accessToken = await window.authService.getAccessToken(['User.Read']);
+                    }
+                } catch (tokenError) {
+                    console.warn('Failed to get access token:', tokenError);
+                    showError('Failed to authenticate request. Please sign in again.');
+                    if (window.authService) {
+                        window.authService.signIn();
+                    }
+                    return;
+                }
+
+                // Prepare headers
+                const headers = {};
+                if (accessToken) {
+                    headers['Authorization'] = `Bearer ${accessToken}`;
+                }
+
                 const response = await fetch('/api/translation/translate', {
                     method: 'POST',
+                    headers: headers,
                     body: formData
                 });
 
                 if (!response.ok) {
                     const errorText = await response.text();
+                    if (response.status === 401) {
+                        throw new Error('Authentication required. Please sign in and try again.');
+                    }
                     throw new Error(errorText || 'Translation failed');
                 }
 
